@@ -58,8 +58,9 @@ void *Hunk_Alloc (int size)
 	byte *buf;
 	printf("Hunk_Alloc %d\n",size);
 
+	size = (size+3)&~3;
 	// round to cacheline
-	size = (size+31)&~31;
+//	size = (size+31)&~31;
 	if (curhunksize + size > maxhunksize)
 		Sys_Error("Hunk_Alloc overflow");
 	buf = membase + curhunksize;
@@ -182,10 +183,11 @@ char *Sys_FindFirst (char *path, unsigned musthave, unsigned canhave)
 
 	if (strcmp(findpattern, "*.*") == 0)
 		strcpy(findpattern, "*");
-	
+	printf("Sys_FindFirst:path=%s base=%s pattern=%s\n",path,findbase,findpattern);
 	if ((fdir = opendir(findbase)) == NULL)
 		return NULL;
 	while ((d = readdir(fdir)) != NULL) {
+		printf("%s\n",d->d_name);
 		if (!*findpattern || glob_match(findpattern, d->d_name)) {
 //			if (*findpattern)
 //				printf("%s matched %s\n", findpattern, d->d_name);
@@ -205,6 +207,7 @@ char *Sys_FindNext (unsigned musthave, unsigned canhave)
 	if (fdir == NULL)
 		return NULL;
 	while ((d = readdir(fdir)) != NULL) {
+		printf("%s\n",d->d_name);
 		if (!*findpattern || glob_match(findpattern, d->d_name)) {
 //			if (*findpattern)
 //				printf("%s matched %s\n", findpattern, d->d_name);

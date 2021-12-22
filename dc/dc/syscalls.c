@@ -155,7 +155,7 @@ DIR* opendir(const char *path)
 
 struct dirent *readdir (DIR *dir)
 {
-	return fs_readdir((file_t)dir);
+	return (struct dirent*)fs_readdir((file_t)dir);
 }
 
 int closedir(DIR *dir)
@@ -164,6 +164,10 @@ int closedir(DIR *dir)
 	return 0;
 }
 
+#define	NEWHEAP	(char*)(0x85000000+((320*240*2+4095)&~4095))
+#define	NEWHEAP_END	((char*)0x85800000)
+/* cachable address */
+
 caddr_t
 _sbrk (int incr)
 {
@@ -171,23 +175,56 @@ _sbrk (int incr)
   static char *heap_end;
   static int total;
   char *prev_heap_end;
+  static char *ram_heap_end;
 
+  total += incr;
   if (heap_end == 0)
     {
       heap_end = &end;
     }
   prev_heap_end = heap_end;
   dbgio_printf("sbrk:%d\n",incr);
-  if (heap_end + incr > stack_ptr)
+  if (!ram_heap_end) {
+    if ( heap_end + incr > stack_ptr)
     {
       _write (1, "Heap and stack collision\n", 25);
-      abort ();
+	dbgio_printf("current %p stack %p rest %d\n",heap_end,stack_ptr,stack_ptr-heap_end);
+//      abort ();
+      /* use vram */
+      dbgio_printf("use vram as heap\n");
+      ram_heap_end = heap_end;
+      prev_heap_end = heap_end = NEWHEAP;
     }
+  } else {
+    if (incr<0 && (heap_end + incr <= NEWHEAP)) {
+        dbgio_printf("back to mem\n");
+        incr+=heap_end-NEWHEAP;
+        heap_end = ram_heap_end;
+        ram_heap_end = 0;
+    }
+
+    else if ( heap_end + incr > NEWHEAP_END)
+    {
+      _write (1, "Heap exhausted          \n", 25);
+	dbgio_printf("current %p rest %d\n",heap_end,NEWHEAP_END-heap_end);
+        abort ();
+    }
+  
+  }
   heap_end += incr;
-  total += incr;
-  dbgio_printf("total:%d\n",total);
+  dbgio_printf("heap:%x end:%x: total:%d\n",prev_heap_end,heap_end,total);
   return (caddr_t) prev_heap_end;
 }
+
+caddr_t sbrk(int incr) { return _sbrk(incr); }
+int mm_init() {return 0;}
+
+/*
+void * _malloc_r(void *reent,size_t sz) { return malloc(sz); }
+void  _free_r(void *reent,void *p) { free(p); }
+void * _calloc_r(void *reent,size_t sz,size_t sz2) { return calloc(sz,sz2); }
+void * _realloc_r(void *reent,void *p,size_t sz) { return realloc(p,sz); }
+*/
 
 int
 _link (char *old, char *new)

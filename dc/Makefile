@@ -49,15 +49,14 @@ LWIP_INCS = -I$(LWIPDIR)/include -I$(LWIPDIR)/arch/$(LWIPARCH)/include \
 KOS_INCS=-I$(KOS_BASE)/libc/include -I$(KOS_BASE)/kernel/arch/dreamcast/include -I$(KOS_BASE)/include 
 
 CC=sh-elf-gcc -ml -m4-single-only
-BASE_CFLAGS=-Dstricmp=strcasecmp $(KOS_INCS) $(LWIP_INCS) -DGAME_HARD_LINKED -DREF_HARD_LINKED
+BASE_CFLAGS=-Dstricmp=strcasecmp $(KOS_INCS) $(LWIP_INCS) -DC_ONLY -DGAME_HARD_LINKED -DREF_HARD_LINKED -DUSE_ZLIB -DDC -DUSE_MERGESAVE
 
 
-RELEASE_CFLAGS=$(BASE_CFLAGS) -O6 -ffast-math -funroll-loops -fomit-frame-pointer -fexpensive-optimizations
-#RELEASE_CFLAGS=$(BASE_CFLAGS) -g -O2 -ffast-math -fomit-frame-pointer
-
+#RELEASE_CFLAGS=$(BASE_CFLAGS) -O6 -ffast-math -funroll-loops -fomit-frame-pointer -fexpensive-optimizations
+RELEASE_CFLAGS=$(BASE_CFLAGS)  -O2 -ffast-math -fomit-frame-pointer -fexpensive-optimizations
 
 DEBUG_CFLAGS=$(BASE_CFLAGS) -g -O2 -ffast-math -fomit-frame-pointer
-LDFLAGS=-lm  -L$(KOS_BASE)/lib -lgl -ldcutils -lkallisti -llwip4 -lc -lm -nostartfiles  -Wl,-Ttext=0x8c010000
+LDFLAGS=-lm -lz_s -L$(KOS_BASE)/lib -lgl -ldcutils -lkallisti -llwip4 -lc -lm -nostartfiles  -Wl,-Ttext=0x8c010000
 SVGALDFLAGS=-lvga -lm
 XLDFLAGS=-L/usr/X11R6/lib -lX11 -lXext -lXxf86dga
 XCFLAGS=
@@ -101,6 +100,7 @@ TARGETS= \
 	$(BUILDDIR)/ref_soft.$(SHLIBEXT) \
 	$(BUILDDIR)/ref_gl.$(SHLIBEXT) \
 	$(BUILDDIR)/quake2 \
+	$(BUILDDIR)/ctf/game$(ARCH).$(SHLIBEXT) \
 #	$(BUILDDIR)/ref_softx.$(SHLIBEXT) \
 #	$(BUILDDIR)/ref_glx.$(SHLIBEXT) \
 #	$(BUILDDIR)/ctf/game$(ARCH).$(SHLIBEXT) \
@@ -184,20 +184,25 @@ QUAKE2_OBJS = \
 	$(BUILDDIR)/client/q_shdc.o \
 	$(BUILDDIR)/client/vid_menu.o \
 	$(BUILDDIR)/client/vid_so.o \
-	$(BUILDDIR)/client/snd_dc.o \
+	$(BUILDDIR)/client/snddma_dc.o \
 	$(BUILDDIR)/client/sys_dc.o \
 	$(BUILDDIR)/client/glob.o \
 	$(BUILDDIR)/client/net_udp.o \
 	\
 	$(BUILDDIR)/client/q_shared.o \
 	$(BUILDDIR)/client/pmove.o \
-	$(BUILDDIR)/client/elfload.o \
 	$(BUILDDIR)/client/in_dc.o \
 	symbols.o \
-	$(BUILDDIR)/ref_soft.a \
-	$(BUILDDIR)/gamesh.a
+	dc/elfload.o \
+	dc/aica.o \
+	dc/fs_mem.o \
+	dc/dcmenu.o \
+	vmuheader.o \
+	$(BUILDDIR)/gamesh.a \
+	$(BUILDDIR)/ref_soft.a
+#	$(BUILDDIR)/ref_gl.a
+#	dc/malloc.o \
 
-#	$(BUILDDIR)/client/aica.o 
 
 STARTUP = dc/startup.o dc/syscalls.o
 
@@ -205,9 +210,6 @@ QUAKE2_AS_OBJS =
 
 $(BUILDDIR)/quake2 : $(QUAKE2_OBJS) $(QUAKE2_AS_OBJS) $(STARTUP)
 	$(CC) $(CFLAGS) -o $@ $(STARTUP) $(QUAKE2_OBJS) $(QUAKE2_AS_OBJS) $(LDFLAGS)
-
-$(BUILDDIR)/client/elfload.o :     $(DC_DIR)/dc/elfload.c
-	$(DO_CC)
 
 $(BUILDDIR)/client/in_dc.o :     $(DC_DIR)/in_dc.c
 	$(DO_CC)
@@ -342,9 +344,6 @@ $(BUILDDIR)/client/snddma_dc.o :  $(DC_DIR)/snddma_dc.c
 	$(DO_CC)
 
 $(BUILDDIR)/client/snd_dc.o :  $(DC_DIR)/snd_dc.c
-	$(DO_CC)
-
-$(BUILDDIR)/client/aica.o :  $(DC_DIR)/dc/aica.c
 	$(DO_CC)
 
 $(BUILDDIR)/client/snd_mixa.o :   $(LINUX_DIR)/snd_mixa.s

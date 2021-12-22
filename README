@@ -1,0 +1,130 @@
+Quake II for Dreamcast
+
+	BERO <bero@geocities.co.jp>
+	http://dcquake.sourceforge.net
+
+- you should set joypad config in options/customize control before starting game.
+
+Status
+
+ - working soutware render only
+ - both run with demo version data files or commercial CD-ROM.
+ - map can work.
+ - full control using pad (except console) , and mouse,keyboard support
+ - sound (but disabled for waist memory)
+ - save to visual memory with zlib compression and icon
+ - cd-da music (but disabled -- if you read data from pc using dcload-ip and cd-da from cd, work fine)
+ - no network
+
+
+JOYSTICK ASSIGN
+
+menu:
+ UP/DOWN        select mod
+ L-TRIG/R-TRIG  scroll description text
+ START/A        start game
+ Y              disk change
+
+game:
+ joystick   keyboard  default bind
+ UP         UP        FORWARD
+ DOWN       DOWN      BACK
+ LEFT       LEFT      TURN LEFT
+ RIGHT      RIGHT     TURN RIGHT
+ A          ENTER     JUMP
+ B          SPACE     JUMP
+ X          none      none
+ Y          Y         none
+ R-TRIG     CTRL      ATTACK
+ L-TRIG     ALT       SIDESTEP
+ analog               look/turn
+
+
+How to run
+
+- it runs CD-R or CD-ROM with this directory structure:
+
+burned Quake II demo version:
+
+\Q2Demo
+  +- baseq2
+      +- players
+      +- pak0.pak
+
+burned Quake II commercial version full install:
+
+\Quake2
+  +- baseq2
+  |    +- players
+  |    +- video
+  |    +- pak0.pak
+  |    +- scrnshot/quakeXX.pcx or scrnshot/quakeXX.tga (optional)
+  +- other mod (optional)
+  +- other mod (optional)
+  +- games.lst (optional)
+
+Quake II commercial version CD-ROM:
+
+\Install\Data
+          +- baseq2
+               +- players
+               +- video
+               +- pak0.pak
+
+dcload-ip:
+
+same as burned image but on pc harddrive.
+if quake directory is at C:\Quake2, under cygwin enviroment, 
+$ mount -b 'C:\quake2' /quake2
+and
+$ dcload-ip -t <dreamcast ip> quake2.elf
+
+
+Add mod/map/TC
+
+I suggest you run under dcload-ip before burning.
+IMPORTANT: if "gamex86.dll" exist in mod directory, it cannot run -- need recompile for dreamcast cpu.
+
+1. Intall/Extract in Quake2 directory.
+2. read it's document
+3. make "games.lst" in Quake2 directory
+
+example
+--cut--
+#gamename,dir,cmdline,screenshot,txt
+Quake II,baseq2,,quake00.pcx,
+Retaliatory Strike,lunar,+set game lunar +map drain,quake00.pcx,Strike.txt
+--cut--
+
+if cmdline is only "+set game dirname" then you can omit cmdline.
+To make screenshot, "mkdir dirname/scrnshot" by hand and run under dcload-ip and press F12 on DC keyboard, or run quake2 on PC with 320x200 or 320x240 resolution.
+
+
+License
+
+- Quake II source code is under GPL. (See LICENCE/gnu.txt)
+  To make fully working package, you need set of source code.
+  Each parts have own licence , (See LICENCE/README.KOS and LICENCE/COPYING.NEWLIB)
+  but all licence is "compatible with GPL".
+  so whole licence of total software is under GPL.
+
+Under GPL, if you copy/modify/re-distribute this software, you MUST distribute with source.
+for example:
+ If you put local copy of this software on your site, you MUST put source too.
+ If you distribute own CD-R images such as adding mods/maps, you MUST include source in image OR distribute source with image.
+
+- Quake II Demo version Data files have another Licence.
+ See Q2Demo/docs/licence.txt
+ It says, "ID grants to you the limited right to distribute, free of charge and by electronic means only, the Software."
+
+
+Acknowledgement
+
+- id software: Thanks X'mas present, Quake and Quake II source
+- GNU Project: cross compiler and assembler,gcc and binutils
+- redhat: unix like compile envircoment on Windows,Cygwin and free libc and libm for embedded systems, newlib
+- Marcus Comstedt: Pioneer of Dreamcast homebrew development,and technical document
+- Andrew Kieschnick: Dreamcast developmnt enviroment "dcload"
+- Dan Potter and contributors: usable hardware library "KallistiOS"
+- Meiwa: hardware information
+

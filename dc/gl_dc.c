@@ -120,7 +120,7 @@ int GLimp_SetMode( int *pwidth, int *pheight, int mode, qboolean fullscreen )
 
 	if ( !ri.Vid_GetModeInfo( &width, &height, mode ) || width!=320 || height!=240 )
 	{
-		ri.Con_Printf( PRINT_ALL, " invalid mode\n" );
+		ri.Con_Printf( PRINT_ALL, " invalid mode %dx%d\n",width,height );
 		return rserr_invalid_mode;
 	}
 

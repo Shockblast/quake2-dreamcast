@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	Key_Event(key,down)	Do_Key_Event(key,down)
 
+#include <dc/maple.h>
 #include <dc/maple/keyboard.h>
 #include <dc/maple/controller.h>
 #include <dc/maple/mouse.h>
@@ -34,7 +35,7 @@ cvar_t	*in_joystick;
 
 // mouse variables
 cvar_t	*m_filter;
-qboolean	mlooking;
+qboolean	mlooking = true;
 
 void IN_MLookDown (void) { mlooking = true; }
 void IN_MLookUp (void) {
@@ -128,7 +129,7 @@ static void convert_event(int buttons,int prev_buttons,const unsigned char *cvtb
 
 static void IN_Joystick(void)
 {
-	const static unsigned	char	cvtbl[16] = {
+	const static unsigned	char	cvtbl[] = {
 #if 1
 	/* same code of keyboard */
 	0, /* C */
@@ -147,6 +148,8 @@ static void IN_Joystick(void)
 	0, /* DOWN2 */
 	0, /* LEFT2 */
 	0, /* RIGHT2 */
+	K_ALT,/* ltrig */
+	K_CTRL,/* rtrig */
 #else
 	0, /* C */
 	K_JOY2, /* B */
@@ -164,16 +167,21 @@ static void IN_Joystick(void)
 	0, /* DOWN2 */
 	0, /* LEFT2 */
 	0, /* RIGHT2 */
+	K_JOY5,/* ltrig */
+	K_JOY6,/* rtrig */
 #endif
 	};
 
+	uint8	caddr;
 	cont_cond_t	cond;
 	static int prev_buttons;
 	int buttons;
 
-	if (cont_get_cond(maple_first_controller(), &cond)<0) return;
+	if ((caddr = maple_first_controller())==0 || cont_get_cond(caddr, &cond)<0) return;
 	
 	buttons = cond.buttons^0xffff;
+	if (cond.ltrig) buttons|=(1<<16);
+	if (cond.rtrig) buttons|=(1<<17);
 	convert_event(buttons,prev_buttons,cvtbl,sizeof(cvtbl));
 	prev_buttons = buttons;
 
@@ -182,19 +190,25 @@ static void IN_Joystick(void)
 static void IN_Mouse(void)
 {
 	const static unsigned char cvtbl[] = {
-	K_MOUSE1,	/* rbutton */
-	K_MOUSE2,	/* lbutton */
-	K_MOUSE3,	/* sidebutton */
+	0,
+	K_MOUSE2,	/* rbutton  */
+	K_MOUSE1,	/* lbutton */
+	0 /* K_MOUSE3 */,	/* wheel press? */
+	K_MWHEELUP,	/* wheel up*/
+	K_MWHEELDOWN,	/* wheel down */
 	};
 
+	uint8 maddr;
 	mouse_cond_t	cond;
 
 	static int prev_buttons;
 	int buttons;
 
-	if (mouse_get_cond(maple_first_mouse(), &cond)<0) return;
+	if ((maddr = maple_first_mouse())==0 || mouse_get_cond(maddr, &cond)<0) return;
 
-	buttons = cond.buttons^0xffff;
+	buttons = cond.buttons^0xff;
+	if (cond.dz<0) buttons|=1<<4;
+	if (cond.dz>0) buttons|=1<<5;
 	convert_event(buttons,prev_buttons,cvtbl,sizeof(cvtbl));
 	prev_buttons = buttons;
 }
@@ -223,10 +237,11 @@ static void analog_move(usercmd_t *cmd,int mx,int my)
 
 static void IN_MouseMove(usercmd_t *cmd)
 {
+	uint8	maddr;
 	mouse_cond_t	cond;
 	int mouse_x,mouse_y;
 
-	if (mouse_get_cond(maple_first_mouse(), &cond)<0) return;
+	if ((maddr = maple_first_mouse())==0 || mouse_get_cond(maple_first_mouse(), &cond)<0) return;
 
 	analog_move(cmd, cond.dx,cond.dy);
 }
@@ -257,12 +272,13 @@ const static int	dwControlMap[JOY_MAX_AXES] = {
 
 static void IN_JoyMove(usercmd_t *cmd)
 {
+	uint8	caddr;
 	cont_cond_t	cond;
 	float	speed, aspeed;
 	float	fAxisValue, fTemp;
 	int		i;
 
-	if (cont_get_cond(maple_first_controller(), &cond)<0) return;
+	if ((caddr = maple_first_controller())==0 || cont_get_cond(caddr, &cond)<0) return;
 	
 	if ( (in_speed.state & 1) ^ (int)cl_run->value)
 		speed = 2;
@@ -274,7 +290,7 @@ static void IN_JoyMove(usercmd_t *cmd)
 	for (i = 0; i < JOY_MAX_AXES; i++)
 	{
 		// get the floating point zero-centered, potentially-inverted data for the current axis
-		fAxisValue = (float) ((&cond.rtrig)[i]-128)/32768;
+		fAxisValue = (float) ((&cond.rtrig)[i]-128)/128;
 		// move centerpoint to zero
 		// convert range from -32768..32767 to -1..1 
 
@@ -423,13 +439,29 @@ void KBD_Close(void)
 
 void KBD_Update (void)
 {
-	extern	kbd_state_t	*kbd_state;
-	static kbd_state_t	old_state,*state;
+	static kbd_state_t	old_state;
+	static uint8 old_addr;
+
+	kbd_state_t	*state;
+	uint8	addr;
+	int	port,unit;
+
 	int shiftkeys;
+
 
 	int i;
 
-	state = kbd_state;
+	addr = maple_first_kb();
+	if (addr!=old_addr) {
+		old_addr = addr;
+		memset(&old_state,0,sizeof(old_state));
+	}
+
+	if (addr==0) return;
+
+	maple_raddr(addr,&port,&unit);
+
+	state = kbd_get_state(port,unit);
 	if (!state) return;
 
 	shiftkeys = state->shift_keys ^ old_state.shift_keys;

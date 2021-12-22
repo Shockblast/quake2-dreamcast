@@ -309,21 +309,45 @@ char *Sys_GetClipboardData(void)
 	return NULL;
 }
 
+
+
 #define	_arch_dreamcast
 #include <kos.h>
 
-int main (int argc, char **argv)
+const char *FS_Tmpdir()
+{
+	return "/mem";
+}
+
+const char *FS_Savedir()
+{
+	static char savedir[]="/vmu/a1";
+
+	int port,unit;
+	uint8 addr;
+	addr = maple_first_vmu();
+	if (addr==0) return "dmy";
+	maple_raddr(addr,&port,&unit);
+	savedir[5] = 'a' + port;
+	savedir[6] = '0' + unit;
+
+	return savedir;
+}
+
+int qmain (int argc, char **argv)
 {
 	int 	time, oldtime, newtime;
 
 	const static char *basedirs[]={
-	"/cd/quake2", /* installed or shareware */
+	"/cd/Quake2", /* installed */
+	"/cd/Q2Demo", /* demo version */
 	"/cd/install/data", /* official CD-ROM */
 	"/pc/quake2", /* debug */
 	NULL
 	};
 
 	char *basedir;
+#if 0
 	int i;
 	
 	for(i=0;(basedir = basedirs[i])!=NULL;i++) {
@@ -335,6 +359,25 @@ int main (int argc, char **argv)
 	}
 	if (basedir==NULL)
 		Sys_Error("can't find quake dir");
+#else
+	{
+	static char *args[10] = {"quake2",NULL};
+	argc = 1;
+	argv = args;
+	basedir = menu(&argc,argv,basedirs);
+	}
+#endif
+#if 0
+	struct ip_addr ipaddr, gw, netmask;
+
+	/* Change these for your network */
+	IP4_ADDR(&ipaddr, 192,168,0,4);
+	IP4_ADDR(&netmask, 255,255,255,0);
+	IP4_ADDR(&gw, 192,168,0,1);
+	lwip_init_static(&ipaddr, &netmask, &gw);
+#endif
+
+	fs_mem_init();
 
 //	static char *args[] = {"quake2","-basedir","/pc/quake2",NULL,NULL};
 //	argv = args;
@@ -376,29 +419,9 @@ void Sys_CopyProtect(void)
 {
 }
 
-#if 0
-/*
-================
-Sys_MakeCodeWriteable
-================
-*/
-void Sys_MakeCodeWriteable (unsigned long startaddr, unsigned long length)
+int main(int argc,char **argv)
 {
-
-	int r;
-	unsigned long addr;
-	int psize = getpagesize();
-
-	addr = (startaddr & ~(psize-1)) - psize;
-
-//	fprintf(stderr, "writable code %lx(%lx)-%lx, length=%lx\n", startaddr,
-//			addr, startaddr+length, length);
-
-	r = mprotect((char*)addr, length + startaddr - addr + psize, 7);
-
-	if (r < 0)
-    		Sys_Error("Protection change failed\n");
-
+//	char *args[] = {"quake2","+set","game","lunar","+map","drain",NULL};
+//	argc  = 6;
+	return qmain(argc,argv);
 }
-
-#endif

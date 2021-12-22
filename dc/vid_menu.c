@@ -219,7 +219,7 @@ void VID_MenuInit( void )
 	static const char *resolutions[] = 
 	{
 		"[320 240  ]",
-		"[400 300  ]",
+	/*	"[400 300  ]",
 		"[512 384  ]",
 		"[640 480  ]",
 		"[800 600  ]",
@@ -228,17 +228,17 @@ void VID_MenuInit( void )
 		"[1152 864 ]",
 		"[1280 1024]",
 		"[1600 1200]",
-		"[2048 1536]",
+		"[2048 1536]", */
 		0
 	};
 	static const char *refs[] =
 	{
 		"[software       ]",
-		"[software X11   ]",
+	/*	"[software X11   ]",
 		"[Mesa 3-D 3DFX  ]",
 		"[3DFXGL Miniport]",
 		"[OpenGL glX     ]",
-		"[Mesa 3-D glX   ]",
+		"[Mesa 3-D glX   ]", */
 		0
 	};
 	static const char *yesno_names[] =
@@ -254,7 +254,7 @@ void VID_MenuInit( void )
 	if ( !gl_picmip )
 		gl_picmip = Cvar_Get( "gl_picmip", "0", 0 );
 	if ( !gl_mode )
-		gl_mode = Cvar_Get( "gl_mode", "3", 0 );
+		gl_mode = Cvar_Get( "gl_mode", "0", 0 ); /* dc use 320x240 */
 	if ( !sw_mode )
 		sw_mode = Cvar_Get( "sw_mode", "0", 0 );
 	if ( !gl_ext_palettedtexture )

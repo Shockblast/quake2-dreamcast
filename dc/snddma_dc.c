@@ -31,18 +31,18 @@ static int snd_inited;
 
 #define	SAMPLE_SIZE	0x8000
 #define	SAMPLE_START	0x11000
-#define	FREQ	22050
+#define	FREQ	11025
 #define	VOL	240
 #define	CHANNELS	2
 
 qboolean SNDDMA_Init(void)
 {
+	return false;
+
 	if (snd_inited) {
 		printf("Sound already init'd\n");
-		return;
+		return 1;
 	}
-
-	return 0;
 
 	dma.speed = FREQ;
 	dma.samplebits = 16;
@@ -51,6 +51,7 @@ qboolean SNDDMA_Init(void)
 	dma.samples = SAMPLE_SIZE*CHANNELS; /* real samples * channels */
 	dma.samplepos = 0;
 	dma.buffer = (void*)(AICA_MEM+SAMPLE_START);
+	dma.submission_chunk = 4;
 
 	spu_init();
 
@@ -74,6 +75,7 @@ int SNDDMA_GetDMAPos(void)
 	ret = aica_get_pos(0);
 //	printf("pos:%x\n",ret);
 	ret = (ret&~1)*CHANNELS;
+	dma.samplepos = ret;
 	return ret;
 }
 

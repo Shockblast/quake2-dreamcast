@@ -22,13 +22,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "../client/client.h"
 #include "../client/snd_loc.h"
 
-#define	PAINTBUFFER_SIZE	512 //2048
+#define	PAINTBUFFER_SIZE	512 /* 2048 */
 portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
 
 #define	NO_TABLE
 
 #ifndef	NO_TABLE
-int		snd_scaletable[32][256];
+/*int*/	short	snd_scaletable[32][256];
 #endif
 
 int	snd_vol;
@@ -56,7 +56,7 @@ void S_WriteLinearBlastStereo16 (void);
 			irq_restore(OLD); \
 	} while(0)
 
-void S_WriteLinearBlastStereo16_separate (short *_snd_l,short *_snd_r,int *snd_p,unsigned int nsamples,int snd_vol)
+void S_WriteLinearBlastStereo16_separate (short *_snd_l,short *_snd_r,int *snd_p,unsigned int nsamples)
 {
 	int		i;
 	int		val;
@@ -69,6 +69,7 @@ void S_WriteLinearBlastStereo16_separate (short *_snd_l,short *_snd_r,int *snd_p
 	{
 		int	lval,rval;
 		G2_LOCK(old);
+		val = *snd_p++>>8;
 		if (val > 0x7fff)
 			val = 0x7fff;
 		else if (val < (short)0x8000)
@@ -76,7 +77,7 @@ void S_WriteLinearBlastStereo16_separate (short *_snd_l,short *_snd_r,int *snd_p
 
 		lval = val;
 
-		val = (*snd_p++ *snd_vol)>>8;
+		val = *snd_p++>>8;
 		if (val > 0x7fff)
 			val = 0x7fff;
 		else if (val < (short)0x8000)
@@ -84,7 +85,7 @@ void S_WriteLinearBlastStereo16_separate (short *_snd_l,short *_snd_r,int *snd_p
 
 		rval = val;
 
-		val = (*snd_p++ *snd_vol)>>8;
+		val = *snd_p++>>8;
 		if (val > 0x7fff)
 			val = 0x7fff;
 		else if (val < (short)0x8000)
@@ -92,7 +93,7 @@ void S_WriteLinearBlastStereo16_separate (short *_snd_l,short *_snd_r,int *snd_p
 
 		snd_l[i] = lval | (val<<16);
 
-		val = (*snd_p++ *snd_vol)>>8;
+		val = *snd_p++;
 		if (val > 0x7fff)
 			val = 0x7fff;
 		else if (val < (short)0x8000)
@@ -204,7 +205,7 @@ void S_TransferStereo16 (unsigned long *pbuf, int endtime)
 			snd_linear_count = endtime - lpaintedtime;
 
 	// write a linear blast of samples
-		S_WriteLinearBlastStereo16_separate (snd_out,snd_out+samples,snd_p,snd_linear_count,snd_vol);
+		S_WriteLinearBlastStereo16_separate (snd_out,snd_out+samples,snd_p,snd_linear_count);
 
 		snd_p += snd_linear_count*2;
 		lpaintedtime += snd_linear_count;
@@ -239,7 +240,6 @@ void S_TransferPaintBuffer(int endtime)
 		for (i=0 ; i<count ; i++)
 			paintbuffer[i].left = paintbuffer[i].right = sin((paintedtime+i)*0.1)*20000*256;
 	}
-
 
 	if (dma.samplebits == 16 && dma.channels == 2)
 	{	// optimized case
@@ -453,7 +453,7 @@ void S_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count, int offset)
 	int leftvol, rightvol;
 	signed char	*sfx;
 #else
-	int		*lscale, *rscale;
+	/*int*/	short	*lscale, *rscale;
 	unsigned char	*sfx;
 #endif
 	int		i;

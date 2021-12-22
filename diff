@@ -1,0 +1,1909 @@
+diff -u -r quake2-3.21.orig/client/cl_view.c quake2-3.21/client/cl_view.c
+--- quake2-3.21.orig/client/cl_view.c	2001-12-23 01:32:20.000000000 +0900
++++ quake2-3.21/client/cl_view.c	2002-07-18 12:35:30.000000000 +0900
+@@ -135,10 +135,18 @@
+ 		Com_Error (ERR_DROP, "Bad light style %i", style);
+ 	ls = &r_lightstyles[style];
+ 
++#if 1
++	/* on dc, this func crash at FPU exception.why? */
++	ls->white = 3;
++	ls->rgb[0] = 1;
++	ls->rgb[1] = 1;
++	ls->rgb[2] = 1;
++#else
+ 	ls->white = r+g+b;
+ 	ls->rgb[0] = r;
+ 	ls->rgb[1] = g;
+ 	ls->rgb[2] = b;
++#endif
+ }
+ 
+ /*
+diff -u -r quake2-3.21.orig/client/console.c quake2-3.21/client/console.c
+--- quake2-3.21.orig/client/console.c	2001-12-23 01:32:20.000000000 +0900
++++ quake2-3.21/client/console.c	2002-07-18 22:13:35.000000000 +0900
+@@ -26,8 +26,10 @@
+ cvar_t		*con_notifytime;
+ 
+ 
+-#define		MAXCMDLINE	256
+-extern	char	key_lines[32][MAXCMDLINE];
++/* change keys.c too */
++#define		MAXCMDLINE	128 /* 256 */
++#define		MAXCMDLINES	16 /* 32 */
++extern	char	key_lines[MAXCMDLINES][MAXCMDLINE];
+ extern	int		edit_line;
+ extern	int		key_linepos;
+ 		
+diff -u -r quake2-3.21.orig/client/keys.c quake2-3.21/client/keys.c
+--- quake2-3.21.orig/client/keys.c	2001-12-23 01:32:20.000000000 +0900
++++ quake2-3.21/client/keys.c	2002-07-18 22:02:58.000000000 +0900
+@@ -26,8 +26,10 @@
+ */
+ 
+ 
+-#define		MAXCMDLINE	256
+-char	key_lines[32][MAXCMDLINE];
++/* change console.c too */
++#define		MAXCMDLINE	128 /* 256 */
++#define		MAXCMDLINES	16 /* 32 */
++char	key_lines[MAXCMDLINES][MAXCMDLINE];
+ int		key_linepos;
+ int		shift_down=false;
+ int	anykeydown;
+@@ -37,11 +39,11 @@
+ 
+ int		key_waiting;
+ char	*keybindings[256];
+-qboolean	consolekeys[256];	// if true, can't be rebound while in console
+-qboolean	menubound[256];	// if true, can't be rebound while in menu
++static char /*qboolean*/	consolekeys[256];	// if true, can't be rebound while in console
++static char /*qboolean*/	menubound[256];	// if true, can't be rebound while in menu
+ int		keyshift[256];		// key to map to if shift held down in console
+ int		key_repeats[256];	// if > 1, it is autorepeating
+-qboolean	keydown[256];
++char /* qboolean*/	keydown[256];
+ 
+ typedef struct
+ {
+@@ -285,7 +287,7 @@
+ 
+ 		Cbuf_AddText ("\n");
+ 		Com_Printf ("%s\n",key_lines[edit_line]);
+-		edit_line = (edit_line + 1) & 31;
++		edit_line = (edit_line + 1) & (MAXCMDLINES-1);
+ 		history_line = edit_line;
+ 		key_lines[edit_line][0] = ']';
+ 		key_linepos = 1;
+@@ -313,7 +315,7 @@
+ 	{
+ 		do
+ 		{
+-			history_line = (history_line - 1) & 31;
++			history_line = (history_line - 1) & (MAXCMDLINES-1);
+ 		} while (history_line != edit_line
+ 				&& !key_lines[history_line][1]);
+ 		if (history_line == edit_line)
+@@ -329,7 +331,7 @@
+ 		if (history_line == edit_line) return;
+ 		do
+ 		{
+-			history_line = (history_line + 1) & 31;
++			history_line = (history_line + 1) & (MAXCMDLINES-1);
+ 		}
+ 		while (history_line != edit_line
+ 			&& !key_lines[history_line][1]);
+@@ -646,7 +648,7 @@
+ {
+ 	int		i;
+ 
+-	for (i=0 ; i<32 ; i++)
++	for (i=0 ; i<MAXCMDLINES ; i++)
+ 	{
+ 		key_lines[i][0] = ']';
+ 		key_lines[i][1] = 0;
+diff -u -r quake2-3.21.orig/client/menu.c quake2-3.21/client/menu.c
+--- quake2-3.21.orig/client/menu.c	2001-12-23 01:32:20.000000000 +0900
++++ quake2-3.21/client/menu.c	2002-07-22 11:19:56.000000000 +0900
+@@ -2026,7 +2026,7 @@
+ =============================================================================
+ */
+ 
+-#define	MAX_SAVEGAMES	15
++#define	MAX_SAVEGAMES	10
+ 
+ static menuframework_s	s_savegame_menu;
+ 
+@@ -2034,7 +2034,10 @@
+ static menuaction_s		s_loadgame_actions[MAX_SAVEGAMES];
+ 
+ char		m_savestrings[MAX_SAVEGAMES][32];
+-qboolean	m_savevalid[MAX_SAVEGAMES];
++/*qboolean*/	char	m_savevalid[MAX_SAVEGAMES];
++
++#ifdef	DC
++#endif
+ 
+ void Create_Savestrings (void)
+ {
+@@ -2042,9 +2045,12 @@
+ 	FILE	*f;
+ 	char	name[MAX_OSPATH];
+ 
++	int dir = opendir(FS_Savedir()); /* DC hack for directory cache */
++
++	/* */
+ 	for (i=0 ; i<MAX_SAVEGAMES ; i++)
+ 	{
+-		Com_sprintf (name, sizeof(name), "%s/save/save%i/server.ssv", FS_Gamedir(), i);
++		Com_sprintf (name, sizeof(name), "%s/s%i/serv.ssv", FS_Savedir(), i);
+ 		f = fopen (name, "rb");
+ 		if (!f)
+ 		{
+@@ -2053,11 +2059,14 @@
+ 		}
+ 		else
+ 		{
++			fseek(f,16,SEEK_SET);
+ 			FS_Read (m_savestrings[i], sizeof(m_savestrings[i]), f);
+ 			fclose (f);
+ 			m_savevalid[i] = true;
+ 		}
+ 	}
++
++	if (dir) closedir(dir);
+ }
+ 
+ void LoadGameCallback( void *self )
+@@ -2065,7 +2074,7 @@
+ 	menuaction_s *a = ( menuaction_s * ) self;
+ 
+ 	if ( m_savevalid[ a->generic.localdata[0] ] )
+-		Cbuf_AddText (va("load save%i\n",  a->generic.localdata[0] ) );
++		Cbuf_AddText (va("load s%i\n",  a->generic.localdata[0] ) );
+ 	M_ForceMenuOff ();
+ }
+ 
+@@ -2136,7 +2145,7 @@
+ {
+ 	menuaction_s *a = ( menuaction_s * ) self;
+ 
+-	Cbuf_AddText (va("save save%i\n", a->generic.localdata[0] ));
++	Cbuf_AddText (va("save s%i\n", a->generic.localdata[0] ));
+ 	M_ForceMenuOff ();
+ }
+ 
+diff -u -r quake2-3.21.orig/client/qmenu.c quake2-3.21/client/qmenu.c
+--- quake2-3.21.orig/client/qmenu.c	2001-12-23 01:32:20.000000000 +0900
++++ quake2-3.21/client/qmenu.c	2002-07-18 22:01:41.000000000 +0900
+@@ -133,7 +133,7 @@
+ 
+ qboolean Field_Key( menufield_s *f, int key )
+ {
+-	extern int keydown[];
++	extern /*int*/char keydown[];
+ 
+ 	switch ( key )
+ 	{
+diff -u -r quake2-3.21.orig/client/ref.h quake2-3.21/client/ref.h
+--- quake2-3.21.orig/client/ref.h	2001-12-23 01:32:20.000000000 +0900
++++ quake2-3.21/client/ref.h	2002-06-26 09:44:30.000000000 +0900
+@@ -24,7 +24,7 @@
+ 
+ #define	MAX_DLIGHTS		32
+ #define	MAX_ENTITIES	128
+-#define	MAX_PARTICLES	4096
++#define	MAX_PARTICLES	1024	//4096
+ #define	MAX_LIGHTSTYLES	256
+ 
+ #define POWERSUIT_SCALE		4.0F
+diff -u -r quake2-3.21.orig/ctf/g_save.c quake2-3.21/ctf/g_save.c
+--- quake2-3.21.orig/ctf/g_save.c	2001-12-23 01:32:22.000000000 +0900
++++ quake2-3.21/ctf/g_save.c	2002-07-22 13:05:06.000000000 +0900
+@@ -234,6 +234,15 @@
+ //ZOID
+ }
+ 
++#ifdef	USE_ZLIB
++#include <zlib.h>
++#define	fopen(name,mode)	(FILE*)gzopen(name,mode)
++#define	fwrite(ptr,size1,size2,f)	gzwrite((gzFile)f,ptr,(size1)*(size2))
++#define	fread(ptr,size1,size2,f)	gzread((gzFile)f,ptr,(size1)*(size2))
++#define	fclose(f)	gzclose((gzFile)f)
++#define	FS_Read(ptr,size,f)	gzread((gzFile)f,ptr,size)
++#endif
++
+ //=========================================================
+ 
+ void WriteField1 (FILE *f, field_t *field, byte *base)
+@@ -444,9 +453,13 @@
+ 	if (!autosave)
+ 		SaveClientData ();
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
+ 	f = fopen (filename, "wb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
+ 	memset (str, 0, sizeof(str));
+ 	strcpy (str, __DATE__);
+@@ -470,9 +483,13 @@
+ 
+ 	gi.FreeTags (TAG_GAME);
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
+ 	f = fopen (filename, "rb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
+ 	fread (str, sizeof(str), 1, f);
+ 	if (strcmp (str, __DATE__))
+@@ -610,9 +627,13 @@
+ 	FILE	*f;
+ 	void	*base;
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
+ 	f = fopen (filename, "wb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
+ 	// write out edict size for checking
+ 	i = sizeof(edict_t);
+@@ -665,9 +686,13 @@
+ 	void	*base;
+ 	edict_t	*ent;
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
+ 	f = fopen (filename, "rb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
+ 	// free any dynamic memory allocated by loading the level
+ 	// base state
+diff -u -r quake2-3.21.orig/ctf/q_shared.c quake2-3.21/ctf/q_shared.c
+--- quake2-3.21.orig/ctf/q_shared.c	2001-12-23 01:32:22.000000000 +0900
++++ quake2-3.21/ctf/q_shared.c	2002-07-18 14:48:41.000000000 +0900
+@@ -757,7 +757,7 @@
+ 	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
+ }
+ 
+-double sqrt(double x);
++// double sqrt(double x);
+ 
+ vec_t VectorLength(vec3_t v)
+ {
+Only in quake2-3.21: dc
+diff -u -r quake2-3.21.orig/game/g_save.c quake2-3.21/game/g_save.c
+--- quake2-3.21.orig/game/g_save.c	2001-12-23 01:32:24.000000000 +0900
++++ quake2-3.21/game/g_save.c	2002-07-22 12:04:24.000000000 +0900
+@@ -222,6 +222,21 @@
+ 	globals.num_edicts = game.maxclients+1;
+ }
+ 
++#ifdef	DC
++#include "../dc/vmuheader.h"
++#include <fcntl.h>
++#endif
++
++#ifdef	USE_ZLIB
++#include <zlib.h>
++#define	fopen(name,mode)	(FILE*)gzopen(name,mode)
++#define	fdopen(fd,mode)	(FILE*)gzdopen(fd,mode)
++#define	fwrite(ptr,size1,size2,f)	gzwrite((gzFile)f,ptr,(size1)*(size2))
++#define	fread(ptr,size1,size2,f)	gzread((gzFile)f,ptr,(size1)*(size2))
++#define	fclose(f)	gzclose((gzFile)f)
++#define	FS_Read(ptr,size,f)	gzread((gzFile)f,ptr,size)
++#endif
++
+ //=========================================================
+ 
+ void WriteField1 (FILE *f, field_t *field, byte *base)
+@@ -467,10 +482,27 @@
+ 	if (!autosave)
+ 		SaveClientData ();
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
++
++#ifdef	DC
++	{ int fd;
++	fd = _open (filename, O_WRONLY);
++	if (fd==-1)
++		gi.error ("Couldn't open %s", filename);
++
++	memset(vmuheader.desc_dc,' ',32);
++	_write(fd,&vmuheader,sizeof(vmuheader));
++	f = fdopen(fd,"wb");
++	}
++#else
+ 	f = fopen (filename, "wb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
++#endif
+ 	memset (str, 0, sizeof(str));
+ 	strcpy (str, __DATE__);
+ 	fwrite (str, sizeof(str), 1, f);
+@@ -493,10 +525,26 @@
+ 
+ 	gi.FreeTags (TAG_GAME);
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
++
++#ifdef	DC
++	{ int fd;
++	fd = _open (filename, O_RDONLY);
++	if (fd==-1)
++		gi.error ("Couldn't open %s", filename);
++
++	_lseek(fd,sizeof(vmuheader),SEEK_SET);
++	f = fdopen(fd,"wb");
++	}
++#else
+ 	f = fopen (filename, "rb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
++#endif
+ 	fread (str, sizeof(str), 1, f);
+ 	if (strcmp (str, __DATE__))
+ 	{
+@@ -633,10 +681,28 @@
+ 	FILE	*f;
+ 	void	*base;
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
++
++#ifdef	DC
++	{ int fd;
++	fd = _open (filename, O_WRONLY);
++	if (fd==-1)
++		gi.error ("Couldn't open %s", filename);
++
++
++	memset(vmuheader.desc_dc,' ',32);
++	_write(fd,&vmuheader,sizeof(vmuheader));
++	f = fdopen(fd,"wb");
++	}
++#else
+ 	f = fopen (filename, "wb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
++#endif	// USE_MERGESAVE
+ 	// write out edict size for checking
+ 	i = sizeof(edict_t);
+ 	fwrite (&i, sizeof(i), 1, f);
+@@ -688,10 +754,26 @@
+ 	void	*base;
+ 	edict_t	*ent;
+ 
++#ifdef	USE_MERGESAVE
++	f = (FILE*)filename;
++#else
++
++#ifdef	DC
++	{ int fd;
++	fd = _open (filename, O_RDONLY);
++	if (fd==-1)
++		gi.error ("Couldn't open %s", filename);
++
++	_lseek(fd,sizeof(vmuheader),SEEK_SET);
++	f = fdopen(fd,"rb");
++	}
++#else
+ 	f = fopen (filename, "rb");
+ 	if (!f)
+ 		gi.error ("Couldn't open %s", filename);
++#endif
+ 
++#endif
+ 	// free any dynamic memory allocated by loading the level
+ 	// base state
+ 	gi.FreeTags (TAG_LEVEL);
+@@ -726,7 +808,7 @@
+ 	// load all the entities
+ 	while (1)
+ 	{
+-		if (fread (&entnum, sizeof(entnum), 1, f) != 1)
++		if (fread (&entnum, 1, sizeof(entnum), f) != sizeof(entnum))
+ 		{
+ 			fclose (f);
+ 			gi.error ("ReadLevel: failed to read entnum");
+diff -u -r quake2-3.21.orig/game/q_shared.c quake2-3.21/game/q_shared.c
+--- quake2-3.21.orig/game/q_shared.c	2001-12-23 01:32:26.000000000 +0900
++++ quake2-3.21/game/q_shared.c	2002-07-18 12:04:19.000000000 +0900
+@@ -757,7 +757,7 @@
+ 	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
+ }
+ 
+-double sqrt(double x);
++// double sqrt(double x);
+ 
+ vec_t VectorLength(vec3_t v)
+ {
+diff -u -r quake2-3.21.orig/game/q_shared.h quake2-3.21/game/q_shared.h
+--- quake2-3.21.orig/game/q_shared.h	2001-12-23 01:32:26.000000000 +0900
++++ quake2-3.21/game/q_shared.h	2002-07-18 17:23:56.000000000 +0900
+@@ -75,8 +75,8 @@
+ //
+ // per-level limits
+ //
+-#define	MAX_CLIENTS			256		// absolute limit
+-#define	MAX_EDICTS			1024	// must change protocol to increase more
++#define	MAX_CLIENTS			64	/*256*/		// absolute limit
++#define	MAX_EDICTS			512	/*1024*/	// must change protocol to increase more
+ #define	MAX_LIGHTSTYLES		256
+ #define	MAX_MODELS			256		// these are sent over the net as bytes
+ #define	MAX_SOUNDS			256		// so they cannot be blindly increased
+diff -u -r quake2-3.21.orig/qcommon/cmd.c quake2-3.21/qcommon/cmd.c
+--- quake2-3.21.orig/qcommon/cmd.c	2001-12-23 01:32:26.000000000 +0900
++++ quake2-3.21/qcommon/cmd.c	2002-07-18 22:08:51.000000000 +0900
+@@ -66,9 +66,9 @@
+ */
+ 
+ sizebuf_t	cmd_text;
+-byte		cmd_text_buf[8192];
++byte		cmd_text_buf[4096/*8192*/];
+ 
+-byte		defer_text_buf[8192];
++byte		defer_text_buf[4096/*8192*/];
+ 
+ /*
+ ============
+diff -u -r quake2-3.21.orig/qcommon/cmodel.c quake2-3.21/qcommon/cmodel.c
+--- quake2-3.21.orig/qcommon/cmodel.c	2001-12-23 01:32:26.000000000 +0900
++++ quake2-3.21/qcommon/cmodel.c	2002-07-22 01:46:33.000000000 +0900
+@@ -106,7 +106,7 @@
+ 
+ int			floodvalid;
+ 
+-qboolean	portalopen[MAX_MAP_AREAPORTALS];
++/*qboolean*/	char	portalopen[MAX_MAP_AREAPORTALS];
+ 
+ 
+ cvar_t		*map_noareas;
+@@ -1710,6 +1710,13 @@
+ 	return bytes;
+ }
+ 
++#ifdef	USE_ZLIB
++#include <zlib.h>
++
++#define	fwrite(ptr,size1,size2,f)	gzwrite((gzFile)f,ptr,(size1)*(size2))
++#define	FS_Read(ptr,size,f)	gzread((gzFile)f,ptr,size)
++
++#endif
+ 
+ /*
+ ===================
+@@ -1737,6 +1744,11 @@
+ 	FloodAreaConnections ();
+ }
+ 
++#ifdef	USE_ZLIB
++#undef	fwrite
++#undef	FS_Read
++#endif
++
+ /*
+ =============
+ CM_HeadnodeVisible
+diff -u -r quake2-3.21.orig/qcommon/common.c quake2-3.21/qcommon/common.c
+--- quake2-3.21.orig/qcommon/common.c	2001-12-23 01:32:26.000000000 +0900
++++ quake2-3.21/qcommon/common.c	2002-07-18 19:12:48.000000000 +0900
+@@ -1166,7 +1166,7 @@
+ void *Z_TagMalloc (int size, int tag)
+ {
+ 	zhead_t	*z;
+-	
++//	printf("Z_TagMalloc:%d %d\n",size,tag);
+ 	size = size + sizeof(zhead_t);
+ 	z = malloc(size);
+ 	if (!z)
+diff -u -r quake2-3.21.orig/qcommon/files.c quake2-3.21/qcommon/files.c
+--- quake2-3.21.orig/qcommon/files.c	2001-12-23 01:32:26.000000000 +0900
++++ quake2-3.21/qcommon/files.c	2002-07-03 09:59:23.000000000 +0900
+@@ -417,7 +417,11 @@
+ 	buf = Z_Malloc(len);
+ 	*buffer = buf;
+ 
+-	FS_Read (buf, len, h);
++//	FS_Read (buf, len, h);
++	{ int fd = fileno(h);
++	_lseek(fd,ftell(h),SEEK_SET);
++	_read(fd,buf,len);
++	}
+ 
+ 	fclose (h);
+ 
+diff -u -r quake2-3.21.orig/qcommon/qfiles.h quake2-3.21/qcommon/qfiles.h
+--- quake2-3.21.orig/qcommon/qfiles.h	2001-12-23 01:32:26.000000000 +0900
++++ quake2-3.21/qcommon/qfiles.h	2002-07-18 17:40:15.000000000 +0900
+@@ -225,27 +225,30 @@
+ // upper design bounds
+ // leaffaces, leafbrushes, planes, and verts are still bounded by
+ // 16 bit short limits
+-#define	MAX_MAP_MODELS		1024
+-#define	MAX_MAP_BRUSHES		8192
+-#define	MAX_MAP_ENTITIES	2048
+-#define	MAX_MAP_ENTSTRING	0x40000
+-#define	MAX_MAP_TEXINFO		8192
+-
+-#define	MAX_MAP_AREAS		256
+-#define	MAX_MAP_AREAPORTALS	1024
+-#define	MAX_MAP_PLANES		65536
+-#define	MAX_MAP_NODES		65536
+-#define	MAX_MAP_BRUSHSIDES	65536
+-#define	MAX_MAP_LEAFS		65536
+-#define	MAX_MAP_VERTS		65536
+-#define	MAX_MAP_FACES		65536
+-#define	MAX_MAP_LEAFFACES	65536
+-#define	MAX_MAP_LEAFBRUSHES 65536
+-#define	MAX_MAP_PORTALS		65536
+-#define	MAX_MAP_EDGES		128000
+-#define	MAX_MAP_SURFEDGES	256000
+-#define	MAX_MAP_LIGHTING	0x200000
+-#define	MAX_MAP_VISIBILITY	0x100000
++/* dc has no mem!! */
++#define	MAXDIV	4
++
++#define	MAX_MAP_MODELS		(1024/2)
++#define	MAX_MAP_BRUSHES		(8192/2)
++#define	MAX_MAP_ENTITIES	(2048/2)
++#define	MAX_MAP_ENTSTRING	(0x40000/MAXDIV)
++#define	MAX_MAP_TEXINFO		(8192/MAXDIV)
++
++#define	MAX_MAP_AREAS		(256/2)
++#define	MAX_MAP_AREAPORTALS	(1024/2)
++#define	MAX_MAP_PLANES		(65536/MAXDIV)
++#define	MAX_MAP_NODES		(65536/MAXDIV)
++#define	MAX_MAP_BRUSHSIDES	(65536/MAXDIV)
++#define	MAX_MAP_LEAFS		(65536/MAXDIV) /* no errcheck */
++#define	MAX_MAP_VERTS		(65536/MAXDIV)
++#define	MAX_MAP_FACES		(65536/MAXDIV)
++/* #define	MAX_MAP_LEAFFACES	(65536/MAXDIV) no errcheck */
++#define	MAX_MAP_LEAFBRUSHES (65536/MAXDIV)
++/* #define	MAX_MAP_PORTALS		(65536/MAXDIV) nt errcheck */
++#define	MAX_MAP_EDGES		(128000/MAXDIV)
++#define	MAX_MAP_SURFEDGES	(256000/MAXDIV)
++/* #define	MAX_MAP_LIGHTING	(0x200000/MAXDIV) */
++#define	MAX_MAP_VISIBILITY	(0x100000/MAXDIV)
+ 
+ // key / value pair sizes
+ 
+diff -u -r quake2-3.21.orig/ref_gl/gl_rmain.c quake2-3.21/ref_gl/gl_rmain.c
+--- quake2-3.21.orig/ref_gl/gl_rmain.c	2001-12-23 01:32:28.000000000 +0900
++++ quake2-3.21/ref_gl/gl_rmain.c	2002-07-25 10:58:13.000000000 +0900
+@@ -996,7 +996,7 @@
+ 	gl_modulate = ri.Cvar_Get ("gl_modulate", "1", CVAR_ARCHIVE );
+ 	gl_log = ri.Cvar_Get( "gl_log", "0", 0 );
+ 	gl_bitdepth = ri.Cvar_Get( "gl_bitdepth", "0", 0 );
+-	gl_mode = ri.Cvar_Get( "gl_mode", "3", CVAR_ARCHIVE );
++	gl_mode = ri.Cvar_Get( "gl_mode", "0", CVAR_ARCHIVE ); /* DC use 320x240 */
+ 	gl_lightmap = ri.Cvar_Get ("gl_lightmap", "0", 0);
+ 	gl_shadows = ri.Cvar_Get ("gl_shadows", "0", CVAR_ARCHIVE );
+ 	gl_dynamic = ri.Cvar_Get ("gl_dynamic", "1", 0);
+diff -u -r quake2-3.21.orig/ref_gl/qgl.h quake2-3.21/ref_gl/qgl.h
+--- quake2-3.21.orig/ref_gl/qgl.h	2001-12-23 03:45:58.000000000 +0900
++++ quake2-3.21/ref_gl/qgl.h	2002-06-26 08:39:05.000000000 +0900
+@@ -21,20 +21,17 @@
+ ** QGL.H
+ */
+ 
++#ifndef __sh__
++
++#include "qgl_orig.h"
++
++#else
++
+ #ifndef __QGL_H__
+ #define __QGL_H__
+ 
+-#ifdef _WIN32
+-#  include <windows.h>
+-#endif
+-
+ #include <GL/gl.h>
+ 
+-#ifdef __linux__
+-//#include <GL/fxmesa.h>
+-#include <GL/glx.h>
+-#endif
+-
+ qboolean QGL_Init( const char *dllname );
+ void     QGL_Shutdown( void );
+ 
+@@ -42,342 +39,342 @@
+ #  define APIENTRY
+ #endif
+ 
+-extern  void ( APIENTRY * qglAccum )(GLenum op, GLfloat value);
+-extern  void ( APIENTRY * qglAlphaFunc )(GLenum func, GLclampf ref);
+-extern  GLboolean ( APIENTRY * qglAreTexturesResident )(GLsizei n, const GLuint *textures, GLboolean *residences);
+-extern  void ( APIENTRY * qglArrayElement )(GLint i);
+-extern  void ( APIENTRY * qglBegin )(GLenum mode);
+-extern  void ( APIENTRY * qglBindTexture )(GLenum target, GLuint texture);
+-extern  void ( APIENTRY * qglBitmap )(GLsizei width, GLsizei height, GLfloat xorig, GLfloat yorig, GLfloat xmove, GLfloat ymove, const GLubyte *bitmap);
+-extern  void ( APIENTRY * qglBlendFunc )(GLenum sfactor, GLenum dfactor);
+-extern  void ( APIENTRY * qglCallList )(GLuint list);
+-extern  void ( APIENTRY * qglCallLists )(GLsizei n, GLenum type, const GLvoid *lists);
+-extern  void ( APIENTRY * qglClear )(GLbitfield mask);
+-extern  void ( APIENTRY * qglClearAccum )(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
+-extern  void ( APIENTRY * qglClearColor )(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
+-extern  void ( APIENTRY * qglClearDepth )(GLclampd depth);
+-extern  void ( APIENTRY * qglClearIndex )(GLfloat c);
+-extern  void ( APIENTRY * qglClearStencil )(GLint s);
+-extern  void ( APIENTRY * qglClipPlane )(GLenum plane, const GLdouble *equation);
+-extern  void ( APIENTRY * qglColor3b )(GLbyte red, GLbyte green, GLbyte blue);
+-extern  void ( APIENTRY * qglColor3bv )(const GLbyte *v);
+-extern  void ( APIENTRY * qglColor3d )(GLdouble red, GLdouble green, GLdouble blue);
+-extern  void ( APIENTRY * qglColor3dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglColor3f )(GLfloat red, GLfloat green, GLfloat blue);
+-extern  void ( APIENTRY * qglColor3fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglColor3i )(GLint red, GLint green, GLint blue);
+-extern  void ( APIENTRY * qglColor3iv )(const GLint *v);
+-extern  void ( APIENTRY * qglColor3s )(GLshort red, GLshort green, GLshort blue);
+-extern  void ( APIENTRY * qglColor3sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglColor3ub )(GLubyte red, GLubyte green, GLubyte blue);
+-extern  void ( APIENTRY * qglColor3ubv )(const GLubyte *v);
+-extern  void ( APIENTRY * qglColor3ui )(GLuint red, GLuint green, GLuint blue);
+-extern  void ( APIENTRY * qglColor3uiv )(const GLuint *v);
+-extern  void ( APIENTRY * qglColor3us )(GLushort red, GLushort green, GLushort blue);
+-extern  void ( APIENTRY * qglColor3usv )(const GLushort *v);
+-extern  void ( APIENTRY * qglColor4b )(GLbyte red, GLbyte green, GLbyte blue, GLbyte alpha);
+-extern  void ( APIENTRY * qglColor4bv )(const GLbyte *v);
+-extern  void ( APIENTRY * qglColor4d )(GLdouble red, GLdouble green, GLdouble blue, GLdouble alpha);
+-extern  void ( APIENTRY * qglColor4dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglColor4f )(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
+-extern  void ( APIENTRY * qglColor4fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglColor4i )(GLint red, GLint green, GLint blue, GLint alpha);
+-extern  void ( APIENTRY * qglColor4iv )(const GLint *v);
+-extern  void ( APIENTRY * qglColor4s )(GLshort red, GLshort green, GLshort blue, GLshort alpha);
+-extern  void ( APIENTRY * qglColor4sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglColor4ub )(GLubyte red, GLubyte green, GLubyte blue, GLubyte alpha);
+-extern  void ( APIENTRY * qglColor4ubv )(const GLubyte *v);
+-extern  void ( APIENTRY * qglColor4ui )(GLuint red, GLuint green, GLuint blue, GLuint alpha);
+-extern  void ( APIENTRY * qglColor4uiv )(const GLuint *v);
+-extern  void ( APIENTRY * qglColor4us )(GLushort red, GLushort green, GLushort blue, GLushort alpha);
+-extern  void ( APIENTRY * qglColor4usv )(const GLushort *v);
+-extern  void ( APIENTRY * qglColorMask )(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha);
+-extern  void ( APIENTRY * qglColorMaterial )(GLenum face, GLenum mode);
+-extern  void ( APIENTRY * qglColorPointer )(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer);
+-extern  void ( APIENTRY * qglCopyPixels )(GLint x, GLint y, GLsizei width, GLsizei height, GLenum type);
+-extern  void ( APIENTRY * qglCopyTexImage1D )(GLenum target, GLint level, GLenum internalFormat, GLint x, GLint y, GLsizei width, GLint border);
+-extern  void ( APIENTRY * qglCopyTexImage2D )(GLenum target, GLint level, GLenum internalFormat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border);
+-extern  void ( APIENTRY * qglCopyTexSubImage1D )(GLenum target, GLint level, GLint xoffset, GLint x, GLint y, GLsizei width);
+-extern  void ( APIENTRY * qglCopyTexSubImage2D )(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height);
+-extern  void ( APIENTRY * qglCullFace )(GLenum mode);
+-extern  void ( APIENTRY * qglDeleteLists )(GLuint list, GLsizei range);
+-extern  void ( APIENTRY * qglDeleteTextures )(GLsizei n, const GLuint *textures);
+-extern  void ( APIENTRY * qglDepthFunc )(GLenum func);
+-extern  void ( APIENTRY * qglDepthMask )(GLboolean flag);
+-extern  void ( APIENTRY * qglDepthRange )(GLclampd zNear, GLclampd zFar);
+-extern  void ( APIENTRY * qglDisable )(GLenum cap);
+-extern  void ( APIENTRY * qglDisableClientState )(GLenum array);
+-extern  void ( APIENTRY * qglDrawArrays )(GLenum mode, GLint first, GLsizei count);
+-extern  void ( APIENTRY * qglDrawBuffer )(GLenum mode);
+-extern  void ( APIENTRY * qglDrawElements )(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices);
+-extern  void ( APIENTRY * qglDrawPixels )(GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid *pixels);
+-extern  void ( APIENTRY * qglEdgeFlag )(GLboolean flag);
+-extern  void ( APIENTRY * qglEdgeFlagPointer )(GLsizei stride, const GLvoid *pointer);
+-extern  void ( APIENTRY * qglEdgeFlagv )(const GLboolean *flag);
+-extern  void ( APIENTRY * qglEnable )(GLenum cap);
+-extern  void ( APIENTRY * qglEnableClientState )(GLenum array);
+-extern  void ( APIENTRY * qglEnd )(void);
+-extern  void ( APIENTRY * qglEndList )(void);
+-extern  void ( APIENTRY * qglEvalCoord1d )(GLdouble u);
+-extern  void ( APIENTRY * qglEvalCoord1dv )(const GLdouble *u);
+-extern  void ( APIENTRY * qglEvalCoord1f )(GLfloat u);
+-extern  void ( APIENTRY * qglEvalCoord1fv )(const GLfloat *u);
+-extern  void ( APIENTRY * qglEvalCoord2d )(GLdouble u, GLdouble v);
+-extern  void ( APIENTRY * qglEvalCoord2dv )(const GLdouble *u);
+-extern  void ( APIENTRY * qglEvalCoord2f )(GLfloat u, GLfloat v);
+-extern  void ( APIENTRY * qglEvalCoord2fv )(const GLfloat *u);
+-extern  void ( APIENTRY * qglEvalMesh1 )(GLenum mode, GLint i1, GLint i2);
+-extern  void ( APIENTRY * qglEvalMesh2 )(GLenum mode, GLint i1, GLint i2, GLint j1, GLint j2);
+-extern  void ( APIENTRY * qglEvalPoint1 )(GLint i);
+-extern  void ( APIENTRY * qglEvalPoint2 )(GLint i, GLint j);
+-extern  void ( APIENTRY * qglFeedbackBuffer )(GLsizei size, GLenum type, GLfloat *buffer);
+-extern  void ( APIENTRY * qglFinish )(void);
+-extern  void ( APIENTRY * qglFlush )(void);
+-extern  void ( APIENTRY * qglFogf )(GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglFogfv )(GLenum pname, const GLfloat *params);
+-extern  void ( APIENTRY * qglFogi )(GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglFogiv )(GLenum pname, const GLint *params);
+-extern  void ( APIENTRY * qglFrontFace )(GLenum mode);
+-extern  void ( APIENTRY * qglFrustum )(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar);
+-extern  GLuint ( APIENTRY * qglGenLists )(GLsizei range);
+-extern  void ( APIENTRY * qglGenTextures )(GLsizei n, GLuint *textures);
+-extern  void ( APIENTRY * qglGetBooleanv )(GLenum pname, GLboolean *params);
+-extern  void ( APIENTRY * qglGetClipPlane )(GLenum plane, GLdouble *equation);
+-extern  void ( APIENTRY * qglGetDoublev )(GLenum pname, GLdouble *params);
+-extern  GLenum ( APIENTRY * qglGetError )(void);
+-extern  void ( APIENTRY * qglGetFloatv )(GLenum pname, GLfloat *params);
+-extern  void ( APIENTRY * qglGetIntegerv )(GLenum pname, GLint *params);
+-extern  void ( APIENTRY * qglGetLightfv )(GLenum light, GLenum pname, GLfloat *params);
+-extern  void ( APIENTRY * qglGetLightiv )(GLenum light, GLenum pname, GLint *params);
+-extern  void ( APIENTRY * qglGetMapdv )(GLenum target, GLenum query, GLdouble *v);
+-extern  void ( APIENTRY * qglGetMapfv )(GLenum target, GLenum query, GLfloat *v);
+-extern  void ( APIENTRY * qglGetMapiv )(GLenum target, GLenum query, GLint *v);
+-extern  void ( APIENTRY * qglGetMaterialfv )(GLenum face, GLenum pname, GLfloat *params);
+-extern  void ( APIENTRY * qglGetMaterialiv )(GLenum face, GLenum pname, GLint *params);
+-extern  void ( APIENTRY * qglGetPixelMapfv )(GLenum map, GLfloat *values);
+-extern  void ( APIENTRY * qglGetPixelMapuiv )(GLenum map, GLuint *values);
+-extern  void ( APIENTRY * qglGetPixelMapusv )(GLenum map, GLushort *values);
+-extern  void ( APIENTRY * qglGetPointerv )(GLenum pname, GLvoid* *params);
+-extern  void ( APIENTRY * qglGetPolygonStipple )(GLubyte *mask);
+-extern  const GLubyte * ( APIENTRY * qglGetString )(GLenum name);
+-extern  void ( APIENTRY * qglGetTexEnvfv )(GLenum target, GLenum pname, GLfloat *params);
+-extern  void ( APIENTRY * qglGetTexEnviv )(GLenum target, GLenum pname, GLint *params);
+-extern  void ( APIENTRY * qglGetTexGendv )(GLenum coord, GLenum pname, GLdouble *params);
+-extern  void ( APIENTRY * qglGetTexGenfv )(GLenum coord, GLenum pname, GLfloat *params);
+-extern  void ( APIENTRY * qglGetTexGeniv )(GLenum coord, GLenum pname, GLint *params);
+-extern  void ( APIENTRY * qglGetTexImage )(GLenum target, GLint level, GLenum format, GLenum type, GLvoid *pixels);
+-extern  void ( APIENTRY * qglGetTexLevelParameterfv )(GLenum target, GLint level, GLenum pname, GLfloat *params);
+-extern  void ( APIENTRY * qglGetTexLevelParameteriv )(GLenum target, GLint level, GLenum pname, GLint *params);
+-extern  void ( APIENTRY * qglGetTexParameterfv )(GLenum target, GLenum pname, GLfloat *params);
+-extern  void ( APIENTRY * qglGetTexParameteriv )(GLenum target, GLenum pname, GLint *params);
+-extern  void ( APIENTRY * qglHint )(GLenum target, GLenum mode);
+-extern  void ( APIENTRY * qglIndexMask )(GLuint mask);
+-extern  void ( APIENTRY * qglIndexPointer )(GLenum type, GLsizei stride, const GLvoid *pointer);
+-extern  void ( APIENTRY * qglIndexd )(GLdouble c);
+-extern  void ( APIENTRY * qglIndexdv )(const GLdouble *c);
+-extern  void ( APIENTRY * qglIndexf )(GLfloat c);
+-extern  void ( APIENTRY * qglIndexfv )(const GLfloat *c);
+-extern  void ( APIENTRY * qglIndexi )(GLint c);
+-extern  void ( APIENTRY * qglIndexiv )(const GLint *c);
+-extern  void ( APIENTRY * qglIndexs )(GLshort c);
+-extern  void ( APIENTRY * qglIndexsv )(const GLshort *c);
+-extern  void ( APIENTRY * qglIndexub )(GLubyte c);
+-extern  void ( APIENTRY * qglIndexubv )(const GLubyte *c);
+-extern  void ( APIENTRY * qglInitNames )(void);
+-extern  void ( APIENTRY * qglInterleavedArrays )(GLenum format, GLsizei stride, const GLvoid *pointer);
+-extern  GLboolean ( APIENTRY * qglIsEnabled )(GLenum cap);
+-extern  GLboolean ( APIENTRY * qglIsList )(GLuint list);
+-extern  GLboolean ( APIENTRY * qglIsTexture )(GLuint texture);
+-extern  void ( APIENTRY * qglLightModelf )(GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglLightModelfv )(GLenum pname, const GLfloat *params);
+-extern  void ( APIENTRY * qglLightModeli )(GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglLightModeliv )(GLenum pname, const GLint *params);
+-extern  void ( APIENTRY * qglLightf )(GLenum light, GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglLightfv )(GLenum light, GLenum pname, const GLfloat *params);
+-extern  void ( APIENTRY * qglLighti )(GLenum light, GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglLightiv )(GLenum light, GLenum pname, const GLint *params);
+-extern  void ( APIENTRY * qglLineStipple )(GLint factor, GLushort pattern);
+-extern  void ( APIENTRY * qglLineWidth )(GLfloat width);
+-extern  void ( APIENTRY * qglListBase )(GLuint base);
+-extern  void ( APIENTRY * qglLoadIdentity )(void);
+-extern  void ( APIENTRY * qglLoadMatrixd )(const GLdouble *m);
+-extern  void ( APIENTRY * qglLoadMatrixf )(const GLfloat *m);
+-extern  void ( APIENTRY * qglLoadName )(GLuint name);
+-extern  void ( APIENTRY * qglLogicOp )(GLenum opcode);
+-extern  void ( APIENTRY * qglMap1d )(GLenum target, GLdouble u1, GLdouble u2, GLint stride, GLint order, const GLdouble *points);
+-extern  void ( APIENTRY * qglMap1f )(GLenum target, GLfloat u1, GLfloat u2, GLint stride, GLint order, const GLfloat *points);
+-extern  void ( APIENTRY * qglMap2d )(GLenum target, GLdouble u1, GLdouble u2, GLint ustride, GLint uorder, GLdouble v1, GLdouble v2, GLint vstride, GLint vorder, const GLdouble *points);
+-extern  void ( APIENTRY * qglMap2f )(GLenum target, GLfloat u1, GLfloat u2, GLint ustride, GLint uorder, GLfloat v1, GLfloat v2, GLint vstride, GLint vorder, const GLfloat *points);
+-extern  void ( APIENTRY * qglMapGrid1d )(GLint un, GLdouble u1, GLdouble u2);
+-extern  void ( APIENTRY * qglMapGrid1f )(GLint un, GLfloat u1, GLfloat u2);
+-extern  void ( APIENTRY * qglMapGrid2d )(GLint un, GLdouble u1, GLdouble u2, GLint vn, GLdouble v1, GLdouble v2);
+-extern  void ( APIENTRY * qglMapGrid2f )(GLint un, GLfloat u1, GLfloat u2, GLint vn, GLfloat v1, GLfloat v2);
+-extern  void ( APIENTRY * qglMaterialf )(GLenum face, GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglMaterialfv )(GLenum face, GLenum pname, const GLfloat *params);
+-extern  void ( APIENTRY * qglMateriali )(GLenum face, GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglMaterialiv )(GLenum face, GLenum pname, const GLint *params);
+-extern  void ( APIENTRY * qglMatrixMode )(GLenum mode);
+-extern  void ( APIENTRY * qglMultMatrixd )(const GLdouble *m);
+-extern  void ( APIENTRY * qglMultMatrixf )(const GLfloat *m);
+-extern  void ( APIENTRY * qglNewList )(GLuint list, GLenum mode);
+-extern  void ( APIENTRY * qglNormal3b )(GLbyte nx, GLbyte ny, GLbyte nz);
+-extern  void ( APIENTRY * qglNormal3bv )(const GLbyte *v);
+-extern  void ( APIENTRY * qglNormal3d )(GLdouble nx, GLdouble ny, GLdouble nz);
+-extern  void ( APIENTRY * qglNormal3dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglNormal3f )(GLfloat nx, GLfloat ny, GLfloat nz);
+-extern  void ( APIENTRY * qglNormal3fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglNormal3i )(GLint nx, GLint ny, GLint nz);
+-extern  void ( APIENTRY * qglNormal3iv )(const GLint *v);
+-extern  void ( APIENTRY * qglNormal3s )(GLshort nx, GLshort ny, GLshort nz);
+-extern  void ( APIENTRY * qglNormal3sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglNormalPointer )(GLenum type, GLsizei stride, const GLvoid *pointer);
+-extern  void ( APIENTRY * qglOrtho )(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar);
+-extern  void ( APIENTRY * qglPassThrough )(GLfloat token);
+-extern  void ( APIENTRY * qglPixelMapfv )(GLenum map, GLsizei mapsize, const GLfloat *values);
+-extern  void ( APIENTRY * qglPixelMapuiv )(GLenum map, GLsizei mapsize, const GLuint *values);
+-extern  void ( APIENTRY * qglPixelMapusv )(GLenum map, GLsizei mapsize, const GLushort *values);
+-extern  void ( APIENTRY * qglPixelStoref )(GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglPixelStorei )(GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglPixelTransferf )(GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglPixelTransferi )(GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglPixelZoom )(GLfloat xfactor, GLfloat yfactor);
+-extern  void ( APIENTRY * qglPointSize )(GLfloat size);
+-extern  void ( APIENTRY * qglPolygonMode )(GLenum face, GLenum mode);
+-extern  void ( APIENTRY * qglPolygonOffset )(GLfloat factor, GLfloat units);
+-extern  void ( APIENTRY * qglPolygonStipple )(const GLubyte *mask);
+-extern  void ( APIENTRY * qglPopAttrib )(void);
+-extern  void ( APIENTRY * qglPopClientAttrib )(void);
+-extern  void ( APIENTRY * qglPopMatrix )(void);
+-extern  void ( APIENTRY * qglPopName )(void);
+-extern  void ( APIENTRY * qglPrioritizeTextures )(GLsizei n, const GLuint *textures, const GLclampf *priorities);
+-extern  void ( APIENTRY * qglPushAttrib )(GLbitfield mask);
+-extern  void ( APIENTRY * qglPushClientAttrib )(GLbitfield mask);
+-extern  void ( APIENTRY * qglPushMatrix )(void);
+-extern  void ( APIENTRY * qglPushName )(GLuint name);
+-extern  void ( APIENTRY * qglRasterPos2d )(GLdouble x, GLdouble y);
+-extern  void ( APIENTRY * qglRasterPos2dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglRasterPos2f )(GLfloat x, GLfloat y);
+-extern  void ( APIENTRY * qglRasterPos2fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglRasterPos2i )(GLint x, GLint y);
+-extern  void ( APIENTRY * qglRasterPos2iv )(const GLint *v);
+-extern  void ( APIENTRY * qglRasterPos2s )(GLshort x, GLshort y);
+-extern  void ( APIENTRY * qglRasterPos2sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglRasterPos3d )(GLdouble x, GLdouble y, GLdouble z);
+-extern  void ( APIENTRY * qglRasterPos3dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglRasterPos3f )(GLfloat x, GLfloat y, GLfloat z);
+-extern  void ( APIENTRY * qglRasterPos3fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglRasterPos3i )(GLint x, GLint y, GLint z);
+-extern  void ( APIENTRY * qglRasterPos3iv )(const GLint *v);
+-extern  void ( APIENTRY * qglRasterPos3s )(GLshort x, GLshort y, GLshort z);
+-extern  void ( APIENTRY * qglRasterPos3sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglRasterPos4d )(GLdouble x, GLdouble y, GLdouble z, GLdouble w);
+-extern  void ( APIENTRY * qglRasterPos4dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglRasterPos4f )(GLfloat x, GLfloat y, GLfloat z, GLfloat w);
+-extern  void ( APIENTRY * qglRasterPos4fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglRasterPos4i )(GLint x, GLint y, GLint z, GLint w);
+-extern  void ( APIENTRY * qglRasterPos4iv )(const GLint *v);
+-extern  void ( APIENTRY * qglRasterPos4s )(GLshort x, GLshort y, GLshort z, GLshort w);
+-extern  void ( APIENTRY * qglRasterPos4sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglReadBuffer )(GLenum mode);
+-extern  void ( APIENTRY * qglReadPixels )(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels);
+-extern  void ( APIENTRY * qglRectd )(GLdouble x1, GLdouble y1, GLdouble x2, GLdouble y2);
+-extern  void ( APIENTRY * qglRectdv )(const GLdouble *v1, const GLdouble *v2);
+-extern  void ( APIENTRY * qglRectf )(GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2);
+-extern  void ( APIENTRY * qglRectfv )(const GLfloat *v1, const GLfloat *v2);
+-extern  void ( APIENTRY * qglRecti )(GLint x1, GLint y1, GLint x2, GLint y2);
+-extern  void ( APIENTRY * qglRectiv )(const GLint *v1, const GLint *v2);
+-extern  void ( APIENTRY * qglRects )(GLshort x1, GLshort y1, GLshort x2, GLshort y2);
+-extern  void ( APIENTRY * qglRectsv )(const GLshort *v1, const GLshort *v2);
+-extern  GLint ( APIENTRY * qglRenderMode )(GLenum mode);
+-extern  void ( APIENTRY * qglRotated )(GLdouble angle, GLdouble x, GLdouble y, GLdouble z);
+-extern  void ( APIENTRY * qglRotatef )(GLfloat angle, GLfloat x, GLfloat y, GLfloat z);
+-extern  void ( APIENTRY * qglScaled )(GLdouble x, GLdouble y, GLdouble z);
+-extern  void ( APIENTRY * qglScalef )(GLfloat x, GLfloat y, GLfloat z);
+-extern  void ( APIENTRY * qglScissor )(GLint x, GLint y, GLsizei width, GLsizei height);
+-extern  void ( APIENTRY * qglSelectBuffer )(GLsizei size, GLuint *buffer);
+-extern  void ( APIENTRY * qglShadeModel )(GLenum mode);
+-extern  void ( APIENTRY * qglStencilFunc )(GLenum func, GLint ref, GLuint mask);
+-extern  void ( APIENTRY * qglStencilMask )(GLuint mask);
+-extern  void ( APIENTRY * qglStencilOp )(GLenum fail, GLenum zfail, GLenum zpass);
+-extern  void ( APIENTRY * qglTexCoord1d )(GLdouble s);
+-extern  void ( APIENTRY * qglTexCoord1dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglTexCoord1f )(GLfloat s);
+-extern  void ( APIENTRY * qglTexCoord1fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglTexCoord1i )(GLint s);
+-extern  void ( APIENTRY * qglTexCoord1iv )(const GLint *v);
+-extern  void ( APIENTRY * qglTexCoord1s )(GLshort s);
+-extern  void ( APIENTRY * qglTexCoord1sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglTexCoord2d )(GLdouble s, GLdouble t);
+-extern  void ( APIENTRY * qglTexCoord2dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglTexCoord2f )(GLfloat s, GLfloat t);
+-extern  void ( APIENTRY * qglTexCoord2fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglTexCoord2i )(GLint s, GLint t);
+-extern  void ( APIENTRY * qglTexCoord2iv )(const GLint *v);
+-extern  void ( APIENTRY * qglTexCoord2s )(GLshort s, GLshort t);
+-extern  void ( APIENTRY * qglTexCoord2sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglTexCoord3d )(GLdouble s, GLdouble t, GLdouble r);
+-extern  void ( APIENTRY * qglTexCoord3dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglTexCoord3f )(GLfloat s, GLfloat t, GLfloat r);
+-extern  void ( APIENTRY * qglTexCoord3fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglTexCoord3i )(GLint s, GLint t, GLint r);
+-extern  void ( APIENTRY * qglTexCoord3iv )(const GLint *v);
+-extern  void ( APIENTRY * qglTexCoord3s )(GLshort s, GLshort t, GLshort r);
+-extern  void ( APIENTRY * qglTexCoord3sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglTexCoord4d )(GLdouble s, GLdouble t, GLdouble r, GLdouble q);
+-extern  void ( APIENTRY * qglTexCoord4dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglTexCoord4f )(GLfloat s, GLfloat t, GLfloat r, GLfloat q);
+-extern  void ( APIENTRY * qglTexCoord4fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglTexCoord4i )(GLint s, GLint t, GLint r, GLint q);
+-extern  void ( APIENTRY * qglTexCoord4iv )(const GLint *v);
+-extern  void ( APIENTRY * qglTexCoord4s )(GLshort s, GLshort t, GLshort r, GLshort q);
+-extern  void ( APIENTRY * qglTexCoord4sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglTexCoordPointer )(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer);
+-extern  void ( APIENTRY * qglTexEnvf )(GLenum target, GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglTexEnvfv )(GLenum target, GLenum pname, const GLfloat *params);
+-extern  void ( APIENTRY * qglTexEnvi )(GLenum target, GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglTexEnviv )(GLenum target, GLenum pname, const GLint *params);
+-extern  void ( APIENTRY * qglTexGend )(GLenum coord, GLenum pname, GLdouble param);
+-extern  void ( APIENTRY * qglTexGendv )(GLenum coord, GLenum pname, const GLdouble *params);
+-extern  void ( APIENTRY * qglTexGenf )(GLenum coord, GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglTexGenfv )(GLenum coord, GLenum pname, const GLfloat *params);
+-extern  void ( APIENTRY * qglTexGeni )(GLenum coord, GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglTexGeniv )(GLenum coord, GLenum pname, const GLint *params);
+-extern  void ( APIENTRY * qglTexImage1D )(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
+-extern  void ( APIENTRY * qglTexImage2D )(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
+-extern  void ( APIENTRY * qglTexParameterf )(GLenum target, GLenum pname, GLfloat param);
+-extern  void ( APIENTRY * qglTexParameterfv )(GLenum target, GLenum pname, const GLfloat *params);
+-extern  void ( APIENTRY * qglTexParameteri )(GLenum target, GLenum pname, GLint param);
+-extern  void ( APIENTRY * qglTexParameteriv )(GLenum target, GLenum pname, const GLint *params);
+-extern  void ( APIENTRY * qglTexSubImage1D )(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLenum type, const GLvoid *pixels);
+-extern  void ( APIENTRY * qglTexSubImage2D )(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid *pixels);
+-extern  void ( APIENTRY * qglTranslated )(GLdouble x, GLdouble y, GLdouble z);
+-extern  void ( APIENTRY * qglTranslatef )(GLfloat x, GLfloat y, GLfloat z);
+-extern  void ( APIENTRY * qglVertex2d )(GLdouble x, GLdouble y);
+-extern  void ( APIENTRY * qglVertex2dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglVertex2f )(GLfloat x, GLfloat y);
+-extern  void ( APIENTRY * qglVertex2fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglVertex2i )(GLint x, GLint y);
+-extern  void ( APIENTRY * qglVertex2iv )(const GLint *v);
+-extern  void ( APIENTRY * qglVertex2s )(GLshort x, GLshort y);
+-extern  void ( APIENTRY * qglVertex2sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglVertex3d )(GLdouble x, GLdouble y, GLdouble z);
+-extern  void ( APIENTRY * qglVertex3dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglVertex3f )(GLfloat x, GLfloat y, GLfloat z);
+-extern  void ( APIENTRY * qglVertex3fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglVertex3i )(GLint x, GLint y, GLint z);
+-extern  void ( APIENTRY * qglVertex3iv )(const GLint *v);
+-extern  void ( APIENTRY * qglVertex3s )(GLshort x, GLshort y, GLshort z);
+-extern  void ( APIENTRY * qglVertex3sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglVertex4d )(GLdouble x, GLdouble y, GLdouble z, GLdouble w);
+-extern  void ( APIENTRY * qglVertex4dv )(const GLdouble *v);
+-extern  void ( APIENTRY * qglVertex4f )(GLfloat x, GLfloat y, GLfloat z, GLfloat w);
+-extern  void ( APIENTRY * qglVertex4fv )(const GLfloat *v);
+-extern  void ( APIENTRY * qglVertex4i )(GLint x, GLint y, GLint z, GLint w);
+-extern  void ( APIENTRY * qglVertex4iv )(const GLint *v);
+-extern  void ( APIENTRY * qglVertex4s )(GLshort x, GLshort y, GLshort z, GLshort w);
+-extern  void ( APIENTRY * qglVertex4sv )(const GLshort *v);
+-extern  void ( APIENTRY * qglVertexPointer )(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer);
+-extern  void ( APIENTRY * qglViewport )(GLint x, GLint y, GLsizei width, GLsizei height);
++#define qglAccum glAccum
++#define qglAlphaFunc glAlphaFunc
++#define qglAreTexturesResident glAreTexturesResident
++#define qglArrayElement glArrayElement
++#define qglBegin glBegin
++#define qglBindTexture glBindTexture
++#define qglBitmap glBitmap
++#define qglBlendFunc glBlendFunc
++#define qglCallList glCallList
++#define qglCallLists glCallLists
++#define qglClear glClear
++#define qglClearAccum glClearAccum
++#define qglClearColor glClearColor
++#define qglClearDepth glClearDepth
++#define qglClearIndex glClearIndex
++#define qglClearStencil glClearStencil
++#define qglClipPlane glClipPlane
++#define qglColor3b glColor3b
++#define qglColor3bv glColor3bv
++#define qglColor3d glColor3d
++#define qglColor3dv glColor3dv
++#define qglColor3f glColor3f
++#define qglColor3fv glColor3fv
++#define qglColor3i glColor3i
++#define qglColor3iv glColor3iv
++#define qglColor3s glColor3s
++#define qglColor3sv glColor3sv
++#define qglColor3ub glColor3ub
++#define qglColor3ubv glColor3ubv
++#define qglColor3ui glColor3ui
++#define qglColor3uiv glColor3uiv
++#define qglColor3us glColor3us
++#define qglColor3usv glColor3usv
++#define qglColor4b glColor4b
++#define qglColor4bv glColor4bv
++#define qglColor4d glColor4d
++#define qglColor4dv glColor4dv
++#define qglColor4f glColor4f
++#define qglColor4fv glColor4fv
++#define qglColor4i glColor4i
++#define qglColor4iv glColor4iv
++#define qglColor4s glColor4s
++#define qglColor4sv glColor4sv
++#define qglColor4ub glColor4ub
++#define qglColor4ubv glColor4ubv
++#define qglColor4ui glColor4ui
++#define qglColor4uiv glColor4uiv
++#define qglColor4us glColor4us
++#define qglColor4usv glColor4usv
++#define qglColorMask glColorMask
++#define qglColorMaterial glColorMaterial
++#define qglColorPointer glColorPointer
++#define qglCopyPixels glCopyPixels
++#define qglCopyTexImage1D glCopyTexImage1D
++#define qglCopyTexImage2D glCopyTexImage2D
++#define qglCopyTexSubImage1D glCopyTexSubImage1D
++#define qglCopyTexSubImage2D glCopyTexSubImage2D
++#define qglCullFace glCullFace
++#define qglDeleteLists glDeleteLists
++#define qglDeleteTextures glDeleteTextures
++#define qglDepthFunc glDepthFunc
++#define qglDepthMask glDepthMask
++#define qglDepthRange glDepthRange
++#define qglDisable glDisable
++#define qglDisableClientState glDisableClientState
++#define qglDrawArrays glDrawArrays
++#define qglDrawBuffer glDrawBuffer
++#define qglDrawElements glDrawElements
++#define qglDrawPixels glDrawPixels
++#define qglEdgeFlag glEdgeFlag
++#define qglEdgeFlagPointer glEdgeFlagPointer
++#define qglEdgeFlagv glEdgeFlagv
++#define qglEnable glEnable
++#define qglEnableClientState glEnableClientState
++#define qglEnd glEnd
++#define qglEndList glEndList
++#define qglEvalCoord1d glEvalCoord1d
++#define qglEvalCoord1dv glEvalCoord1dv
++#define qglEvalCoord1f glEvalCoord1f
++#define qglEvalCoord1fv glEvalCoord1fv
++#define qglEvalCoord2d glEvalCoord2d
++#define qglEvalCoord2dv glEvalCoord2dv
++#define qglEvalCoord2f glEvalCoord2f
++#define qglEvalCoord2fv glEvalCoord2fv
++#define qglEvalMesh1 glEvalMesh1
++#define qglEvalMesh2 glEvalMesh2
++#define qglEvalPoint1 glEvalPoint1
++#define qglEvalPoint2 glEvalPoint2
++#define qglFeedbackBuffer glFeedbackBuffer
++#define qglFinish glFinish
++#define qglFlush glFlush
++#define qglFogf glFogf
++#define qglFogfv glFogfv
++#define qglFogi glFogi
++#define qglFogiv glFogiv
++#define qglFrontFace glFrontFace
++#define qglFrustum glFrustum
++#define qglGenLists glGenLists
++#define qglGenTextures glGenTextures
++#define qglGetBooleanv glGetBooleanv
++#define qglGetClipPlane glGetClipPlane
++#define qglGetDoublev glGetDoublev
++#define qglGetError glGetError
++#define qglGetFloatv glGetFloatv
++#define qglGetIntegerv glGetIntegerv
++#define qglGetLightfv glGetLightfv
++#define qglGetLightiv glGetLightiv
++#define qglGetMapdv glGetMapdv
++#define qglGetMapfv glGetMapfv
++#define qglGetMapiv glGetMapiv
++#define qglGetMaterialfv glGetMaterialfv
++#define qglGetMaterialiv glGetMaterialiv
++#define qglGetPixelMapfv glGetPixelMapfv
++#define qglGetPixelMapuiv glGetPixelMapuiv
++#define qglGetPixelMapusv glGetPixelMapusv
++#define qglGetPointerv glGetPointerv
++#define qglGetPolygonStipple glGetPolygonStipple
++#define qglGetString glGetString
++#define qglGetTexEnvfv glGetTexEnvfv
++#define qglGetTexEnviv glGetTexEnviv
++#define qglGetTexGendv glGetTexGendv
++#define qglGetTexGenfv glGetTexGenfv
++#define qglGetTexGeniv glGetTexGeniv
++#define qglGetTexImage glGetTexImage
++#define qglGetTexLevelParameterfv glGetTexLevelParameterfv
++#define qglGetTexLevelParameteriv glGetTexLevelParameteriv
++#define qglGetTexParameterfv glGetTexParameterfv
++#define qglGetTexParameteriv glGetTexParameteriv
++#define qglHint glHint
++#define qglIndexMask glIndexMask
++#define qglIndexPointer glIndexPointer
++#define qglIndexd glIndexd
++#define qglIndexdv glIndexdv
++#define qglIndexf glIndexf
++#define qglIndexfv glIndexfv
++#define qglIndexi glIndexi
++#define qglIndexiv glIndexiv
++#define qglIndexs glIndexs
++#define qglIndexsv glIndexsv
++#define qglIndexub glIndexub
++#define qglIndexubv glIndexubv
++#define qglInitNames glInitNames
++#define qglInterleavedArrays glInterleavedArrays
++#define qglIsEnabled glIsEnabled
++#define qglIsList glIsList
++#define qglIsTexture glIsTexture
++#define qglLightModelf glLightModelf
++#define qglLightModelfv glLightModelfv
++#define qglLightModeli glLightModeli
++#define qglLightModeliv glLightModeliv
++#define qglLightf glLightf
++#define qglLightfv glLightfv
++#define qglLighti glLighti
++#define qglLightiv glLightiv
++#define qglLineStipple glLineStipple
++#define qglLineWidth glLineWidth
++#define qglListBase glListBase
++#define qglLoadIdentity glLoadIdentity
++#define qglLoadMatrixd glLoadMatrixd
++#define qglLoadMatrixf glLoadMatrixf
++#define qglLoadName glLoadName
++#define qglLogicOp glLogicOp
++#define qglMap1d glMap1d
++#define qglMap1f glMap1f
++#define qglMap2d glMap2d
++#define qglMap2f glMap2f
++#define qglMapGrid1d glMapGrid1d
++#define qglMapGrid1f glMapGrid1f
++#define qglMapGrid2d glMapGrid2d
++#define qglMapGrid2f glMapGrid2f
++#define qglMaterialf glMaterialf
++#define qglMaterialfv glMaterialfv
++#define qglMateriali glMateriali
++#define qglMaterialiv glMaterialiv
++#define qglMatrixMode glMatrixMode
++#define qglMultMatrixd glMultMatrixd
++#define qglMultMatrixf glMultMatrixf
++#define qglNewList glNewList
++#define qglNormal3b glNormal3b
++#define qglNormal3bv glNormal3bv
++#define qglNormal3d glNormal3d
++#define qglNormal3dv glNormal3dv
++#define qglNormal3f glNormal3f
++#define qglNormal3fv glNormal3fv
++#define qglNormal3i glNormal3i
++#define qglNormal3iv glNormal3iv
++#define qglNormal3s glNormal3s
++#define qglNormal3sv glNormal3sv
++#define qglNormalPointer glNormalPointer
++#define qglOrtho glOrtho
++#define qglPassThrough glPassThrough
++#define qglPixelMapfv glPixelMapfv
++#define qglPixelMapuiv glPixelMapuiv
++#define qglPixelMapusv glPixelMapusv
++#define qglPixelStoref glPixelStoref
++#define qglPixelStorei glPixelStorei
++#define qglPixelTransferf glPixelTransferf
++#define qglPixelTransferi glPixelTransferi
++#define qglPixelZoom glPixelZoom
++#define qglPointSize glPointSize
++#define qglPolygonMode glPolygonMode
++#define qglPolygonOffset glPolygonOffset
++#define qglPolygonStipple glPolygonStipple
++#define qglPopAttrib glPopAttrib
++#define qglPopClientAttrib glPopClientAttrib
++#define qglPopMatrix glPopMatrix
++#define qglPopName glPopName
++#define qglPrioritizeTextures glPrioritizeTextures
++#define qglPushAttrib glPushAttrib
++#define qglPushClientAttrib glPushClientAttrib
++#define qglPushMatrix glPushMatrix
++#define qglPushName glPushName
++#define qglRasterPos2d glRasterPos2d
++#define qglRasterPos2dv glRasterPos2dv
++#define qglRasterPos2f glRasterPos2f
++#define qglRasterPos2fv glRasterPos2fv
++#define qglRasterPos2i glRasterPos2i
++#define qglRasterPos2iv glRasterPos2iv
++#define qglRasterPos2s glRasterPos2s
++#define qglRasterPos2sv glRasterPos2sv
++#define qglRasterPos3d glRasterPos3d
++#define qglRasterPos3dv glRasterPos3dv
++#define qglRasterPos3f glRasterPos3f
++#define qglRasterPos3fv glRasterPos3fv
++#define qglRasterPos3i glRasterPos3i
++#define qglRasterPos3iv glRasterPos3iv
++#define qglRasterPos3s glRasterPos3s
++#define qglRasterPos3sv glRasterPos3sv
++#define qglRasterPos4d glRasterPos4d
++#define qglRasterPos4dv glRasterPos4dv
++#define qglRasterPos4f glRasterPos4f
++#define qglRasterPos4fv glRasterPos4fv
++#define qglRasterPos4i glRasterPos4i
++#define qglRasterPos4iv glRasterPos4iv
++#define qglRasterPos4s glRasterPos4s
++#define qglRasterPos4sv glRasterPos4sv
++#define qglReadBuffer glReadBuffer
++#define qglReadPixels glReadPixels
++#define qglRectd glRectd
++#define qglRectdv glRectdv
++#define qglRectf glRectf
++#define qglRectfv glRectfv
++#define qglRecti glRecti
++#define qglRectiv glRectiv
++#define qglRects glRects
++#define qglRectsv glRectsv
++#define qglRenderMode glRenderMode
++#define qglRotated glRotated
++#define qglRotatef glRotatef
++#define qglScaled glScaled
++#define qglScalef glScalef
++#define qglScissor glScissor
++#define qglSelectBuffer glSelectBuffer
++#define qglShadeModel glShadeModel
++#define qglStencilFunc glStencilFunc
++#define qglStencilMask glStencilMask
++#define qglStencilOp glStencilOp
++#define qglTexCoord1d glTexCoord1d
++#define qglTexCoord1dv glTexCoord1dv
++#define qglTexCoord1f glTexCoord1f
++#define qglTexCoord1fv glTexCoord1fv
++#define qglTexCoord1i glTexCoord1i
++#define qglTexCoord1iv glTexCoord1iv
++#define qglTexCoord1s glTexCoord1s
++#define qglTexCoord1sv glTexCoord1sv
++#define qglTexCoord2d glTexCoord2d
++#define qglTexCoord2dv glTexCoord2dv
++#define qglTexCoord2f glTexCoord2f
++#define qglTexCoord2fv glTexCoord2fv
++#define qglTexCoord2i glTexCoord2i
++#define qglTexCoord2iv glTexCoord2iv
++#define qglTexCoord2s glTexCoord2s
++#define qglTexCoord2sv glTexCoord2sv
++#define qglTexCoord3d glTexCoord3d
++#define qglTexCoord3dv glTexCoord3dv
++#define qglTexCoord3f glTexCoord3f
++#define qglTexCoord3fv glTexCoord3fv
++#define qglTexCoord3i glTexCoord3i
++#define qglTexCoord3iv glTexCoord3iv
++#define qglTexCoord3s glTexCoord3s
++#define qglTexCoord3sv glTexCoord3sv
++#define qglTexCoord4d glTexCoord4d
++#define qglTexCoord4dv glTexCoord4dv
++#define qglTexCoord4f glTexCoord4f
++#define qglTexCoord4fv glTexCoord4fv
++#define qglTexCoord4i glTexCoord4i
++#define qglTexCoord4iv glTexCoord4iv
++#define qglTexCoord4s glTexCoord4s
++#define qglTexCoord4sv glTexCoord4sv
++#define qglTexCoordPointer glTexCoordPointer
++#define qglTexEnvf glTexEnvf
++#define qglTexEnvfv glTexEnvfv
++#define qglTexEnvi glTexEnvi
++#define qglTexEnviv glTexEnviv
++#define qglTexGend glTexGend
++#define qglTexGendv glTexGendv
++#define qglTexGenf glTexGenf
++#define qglTexGenfv glTexGenfv
++#define qglTexGeni glTexGeni
++#define qglTexGeniv glTexGeniv
++#define qglTexImage1D glTexImage1D
++#define qglTexImage2D glTexImage2D
++#define qglTexParameterf glTexParameterf
++#define qglTexParameterfv glTexParameterfv
++#define qglTexParameteri glTexParameteri
++#define qglTexParameteriv glTexParameteriv
++#define qglTexSubImage1D glTexSubImage1D
++#define qglTexSubImage2D glTexSubImage2D
++#define qglTranslated glTranslated
++#define qglTranslatef glTranslatef
++#define qglVertex2d glVertex2d
++#define qglVertex2dv glVertex2dv
++#define qglVertex2f glVertex2f
++#define qglVertex2fv glVertex2fv
++#define qglVertex2i glVertex2i
++#define qglVertex2iv glVertex2iv
++#define qglVertex2s glVertex2s
++#define qglVertex2sv glVertex2sv
++#define qglVertex3d glVertex3d
++#define qglVertex3dv glVertex3dv
++#define qglVertex3f glVertex3f
++#define qglVertex3fv glVertex3fv
++#define qglVertex3i glVertex3i
++#define qglVertex3iv glVertex3iv
++#define qglVertex3s glVertex3s
++#define qglVertex3sv glVertex3sv
++#define qglVertex4d glVertex4d
++#define qglVertex4dv glVertex4dv
++#define qglVertex4f glVertex4f
++#define qglVertex4fv glVertex4fv
++#define qglVertex4i glVertex4i
++#define qglVertex4iv glVertex4iv
++#define qglVertex4s glVertex4s
++#define qglVertex4sv glVertex4sv
++#define qglVertexPointer glVertexPointer
++#define qglViewport glViewport
+ 
+ extern	void ( APIENTRY * qglPointParameterfEXT)( GLenum param, GLfloat value );
+ extern	void ( APIENTRY * qglPointParameterfvEXT)( GLenum param, const GLfloat *value );
+@@ -462,6 +459,10 @@
+ 
+ #endif // linux
+ 
++#if 1 /* dc */
++#define	qwglGetProcAddress	glKosGetProcAddress
++#endif
++
+ /*
+ ** extension constants
+ */
+@@ -484,3 +485,5 @@
+ extern int GL_TEXTURE0, GL_TEXTURE1;
+ 
+ #endif
++
++#endif /* sh */
+\ No newline at end of file
+diff -u -r quake2-3.21.orig/ref_soft/d_ifacea.h quake2-3.21/ref_soft/d_ifacea.h
+--- quake2-3.21.orig/ref_soft/d_ifacea.h	2001-10-02 23:11:16.000000000 +0900
++++ quake2-3.21/ref_soft/d_ifacea.h	2002-07-18 17:13:14.000000000 +0900
+@@ -16,7 +16,7 @@
+ #define	CYCLE	128
+ 
+ // !!! if this is changed, it must be changed in r_shared.h too !!!
+-#define	MAXHEIGHT	1200
++#define	MAXHEIGHT	480
+ 
+ // !!! if this is changed, it must be changed in qcommon.h too !!!
+ #define CACHE_SIZE	32		// used to align key data structures
+diff -u -r quake2-3.21.orig/ref_soft/r_local.h quake2-3.21/ref_soft/r_local.h
+--- quake2-3.21.orig/ref_soft/r_local.h	2001-12-23 01:32:28.000000000 +0900
++++ quake2-3.21/ref_soft/r_local.h	2002-07-18 17:13:36.000000000 +0900
+@@ -159,8 +159,8 @@
+ #define MAXWORKINGVERTS (MAXVERTS+4)    // max points in an intermediate
+ 										//  polygon (while processing)
+ // !!! if this is changed, it must be changed in d_ifacea.h too !!!
+-#define MAXHEIGHT       1200
+-#define MAXWIDTH        1600
++#define MAXHEIGHT       640
++#define MAXWIDTH        480
+ 
+ #define INFINITE_DISTANCE       0x10000         // distance that's always guaranteed to
+ 										//  be farther away than anything in
+diff -u -r quake2-3.21.orig/ref_soft/r_model.c quake2-3.21/ref_soft/r_model.c
+--- quake2-3.21.orig/ref_soft/r_model.c	2001-12-23 01:32:28.000000000 +0900
++++ quake2-3.21/ref_soft/r_model.c	2002-07-19 01:45:29.000000000 +0900
+@@ -149,21 +149,22 @@
+ 	//
+ 
+ 	// call the apropriate loader
+-	
++#define	DIV	4
++#define	MAGIC	32
+ 	switch (LittleLong(*(unsigned *)buf))
+ 	{
+ 	case IDALIASHEADER:
+-		loadmodel->extradata = Hunk_Begin (0x200000);
++		loadmodel->extradata = Hunk_Begin (0x200000/DIV-MAGIC);
+ 		Mod_LoadAliasModel (mod, buf);
+ 		break;
+ 		
+ 	case IDSPRITEHEADER:
+-		loadmodel->extradata = Hunk_Begin (0x10000);
++		loadmodel->extradata = Hunk_Begin (0x10000/DIV-MAGIC);
+ 		Mod_LoadSpriteModel (mod, buf);
+ 		break;
+ 	
+ 	case IDBSPHEADER:
+-		loadmodel->extradata = Hunk_Begin (0x1000000);
++		loadmodel->extradata = Hunk_Begin (/*0x1000000/DIV*/ (int)(2.5*1024*1024)-MAGIC);
+ 		Mod_LoadBrushModel (mod, buf);
+ 		break;
+ 
+diff -u -r quake2-3.21.orig/ref_soft/r_polyse.c quake2-3.21/ref_soft/r_polyse.c
+--- quake2-3.21.orig/ref_soft/r_polyse.c	2001-12-23 01:32:28.000000000 +0900
++++ quake2-3.21/ref_soft/r_polyse.c	2002-07-18 16:49:38.000000000 +0900
+@@ -102,8 +102,8 @@
+ int						d_pzextrastep, d_pzbasestep;
+ 
+ typedef struct {
+-	int		quotient;
+-	int		remainder;
++	/*int*/	signed char	quotient;
++	/*int*/	signed char	remainder;
+ } adivtab_t;
+ 
+ static adivtab_t	adivtab[32*32] = {
+diff -u -r quake2-3.21.orig/server/sv_ccmds.c quake2-3.21/server/sv_ccmds.c
+--- quake2-3.21.orig/server/sv_ccmds.c	2001-12-23 01:32:36.000000000 +0900
++++ quake2-3.21/server/sv_ccmds.c	2002-07-22 12:31:47.000000000 +0900
+@@ -21,6 +21,11 @@
+ #include "server.h"
+ 
+ /*
++ in VMU, maxfilename is  12, 
++ but "save0/server.ssv" is 16,
++ so "s0/serv.ssv" instead of "server.ssv"
++
++/*
+ ===============================================================================
+ 
+ OPERATOR CONSOLE ONLY COMMANDS
+@@ -146,6 +151,19 @@
+ ===============================================================================
+ */
+ 
++extern const char *FS_Tmpdir();
++extern const char *FS_Savedir();
++
++static int get_dirname(char *buf,size_t bufsize,const char *savename)
++{
++	if (strcmp(savename,"current")==0) {
++		Com_sprintf(buf,bufsize,"%s/",FS_Tmpdir());
++	} else {
++		Com_sprintf(buf,bufsize,"%s/%s/",FS_Savedir(),savename);
++	}
++	return strlen(buf);
++}
++
+ /*
+ =====================
+ SV_WipeSavegame
+@@ -157,15 +175,21 @@
+ {
+ 	char	name[MAX_OSPATH];
+ 	char	*s;
++	int offset;
+ 
+ 	Com_DPrintf("SV_WipeSaveGame(%s)\n", savename);
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/server.ssv", FS_Gamedir (), savename);
++	offset = get_dirname(name,sizeof(name),savename);
++
++	Com_sprintf (name + offset, sizeof(name)-offset, "serv.ssv");
+ 	remove (name);
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/game.ssv", FS_Gamedir (), savename);
++
++#ifndef	USE_MERGESAVE
++	Com_sprintf (name + offset, sizeof(name)-offset, "game.ssv" );
+ 	remove (name);
++#endif
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/*.sav", FS_Gamedir (), savename);
++	Com_sprintf (name + offset, sizeof(name)-offset, "*.sav" );
+ 	s = Sys_FindFirst( name, 0, 0 );
+ 	while (s)
+ 	{
+@@ -173,7 +197,9 @@
+ 		s = Sys_FindNext( 0, 0 );
+ 	}
+ 	Sys_FindClose ();
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/*.sv2", FS_Gamedir (), savename);
++
++#ifndef USE_MERGESAVE
++	Com_sprintf (name + offset, sizeof(name)-offset, "*.sv2");
+ 	s = Sys_FindFirst(name, 0, 0 );
+ 	while (s)
+ 	{
+@@ -181,6 +207,7 @@
+ 		s = Sys_FindNext( 0, 0 );
+ 	}
+ 	Sys_FindClose ();
++#endif
+ }
+ 
+ 
+@@ -228,46 +255,92 @@
+ void SV_CopySaveGame (char *src, char *dst)
+ {
+ 	char	name[MAX_OSPATH], name2[MAX_OSPATH];
+-	int		l, len;
++	int		l, len, offset1,offset2;
+ 	char	*found;
+ 
+ 	Com_DPrintf("SV_CopySaveGame(%s, %s)\n", src, dst);
+ 
+ 	SV_WipeSavegame (dst);
+ 
++	offset1 = get_dirname(name ,sizeof(name) ,src);
++	offset2 = get_dirname(name2,sizeof(name2),dst);
++
+ 	// copy the savegame over
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/server.ssv", FS_Gamedir(), src);
+-	Com_sprintf (name2, sizeof(name2), "%s/save/%s/server.ssv", FS_Gamedir(), dst);
++	Com_sprintf (name + offset1, sizeof(name) -offset1, "serv.ssv");
++	Com_sprintf (name2+ offset2, sizeof(name2)-offset2, "serv.ssv");
+ 	FS_CreatePath (name2);
+ 	CopyFile (name, name2);
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/game.ssv", FS_Gamedir(), src);
+-	Com_sprintf (name2, sizeof(name2), "%s/save/%s/game.ssv", FS_Gamedir(), dst);
++#ifndef	USE_MERGESAVE
++	Com_sprintf (name + offset1, sizeof(name) -offset1, "game.ssv");
++	Com_sprintf (name2+ offset2, sizeof(name2)-offset2, "game.ssv");
+ 	CopyFile (name, name2);
++#endif
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/", FS_Gamedir(), src);
+-	len = strlen(name);
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/*.sav", FS_Gamedir(), src);
++	len = offset1;
++	Com_sprintf (name + offset1, sizeof(name) -offset1, "*.sav");
+ 	found = Sys_FindFirst(name, 0, 0 );
+ 	while (found)
+ 	{
+ 		strcpy (name+len, found+len);
+ 
+-		Com_sprintf (name2, sizeof(name2), "%s/save/%s/%s", FS_Gamedir(), dst, found+len);
++		Com_sprintf (name2+ offset2, sizeof(name2)-offset2, "%s", found+len);
+ 		CopyFile (name, name2);
+ 
++#ifndef	USE_MERGESAVE
+ 		// change sav to sv2
+ 		l = strlen(name);
+ 		strcpy (name+l-3, "sv2");
+ 		l = strlen(name2);
+ 		strcpy (name2+l-3, "sv2");
+ 		CopyFile (name, name2);
++#endif
+ 
+ 		found = Sys_FindNext( 0, 0 );
+ 	}
+ 	Sys_FindClose ();
+ }
+ 
++#ifdef	USE_ZLIB
++#include <zlib.h>
++#define	fopen(name,mode)	(FILE*)gzopen(name,mode)
++#define	fdopen(fd,mode)		(FILE*)gzdopen(fd,mode)
++#define	fwrite(ptr,size1,size2,f)	gzwrite((gzFile)f,ptr,(size1)*(size2))
++#define	fread(ptr,size1,size2,f)	gzread((gzFile)f,ptr,(size1)*(size2))
++#define	fclose(f)	gzclose((gzFile)f)
++#define	FS_Read(ptr,size,f)	gzread((gzFile)f,ptr,size)
++#define	fputc(c,f)	gzputc((gzFile)f,c)
++#define	fgetc(f)	gzgetc((gzFile)f)
++#endif
++
++#ifdef DC
++#include "../dc/vmuheader.h"
++#include <fcntl.h>
++#endif
++
++#define	USE_FSTRING
++
++#include <assert.h>
++
++#ifdef	USE_FSTRING
++static void fwrite_string(const char *str,FILE *f)
++{
++	size_t len = strlen(str);
++	assert(len<255);
++	fputc(len,f);
++	if (len) fwrite(str,1,len,f);
++}
++
++static int fread_string(char *str,FILE *f)
++{
++	int len = fgetc(f);
++	if (len>0) {
++		fread(str,1,len,f);
++		str[len]=0;
++	}
++	return len;
++}
++#endif
+ 
+ /*
+ ==============
+@@ -282,19 +355,52 @@
+ 
+ 	Com_DPrintf("SV_WriteLevelFile()\n");
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/current/%s.sv2", FS_Gamedir(), sv.name);
++#ifdef USE_MERGESAVE
++	Com_sprintf (name, sizeof(name), "%s/%s.sav", FS_Tmpdir(), sv.name);
++#else
++	Com_sprintf (name, sizeof(name), "%s/%s.sv2", FS_Tmpdir(), sv.name);
++#endif
++#ifdef	DC
++	{ int fd;
++	fd = _open(name, O_WRONLY);
++	if (fd==-1)
++	{
++		Com_Printf ("Failed to open %s\n", name);
++		return;
++	}
++	printf("SV_WriteLevelFile:%s\n",name);
++	memcpy(vmuheader.desc_dc,"QUAKE II Level File            ",32);
++	_write (fd,&vmuheader,sizeof(vmuheader));
++	f = fdopen(fd,"wb");
++	}
++	Com_Printf ("fdopen success %p\n", f);
++#else
+ 	f = fopen(name, "wb");
+ 	if (!f)
+ 	{
+ 		Com_Printf ("Failed to open %s\n", name);
+ 		return;
+ 	}
++#endif
++#if 0 //def USE_FSTRING
++	{int i;
++	for(i=0;i<MAX_CONFIGSTRINGS;i++) {
++		printf("%d:%s\n",i,sv.configstrings[i]);
++		fwrite_string(sv.configstrings[i],f);
++	}
++	}
++#else
+ 	fwrite (sv.configstrings, sizeof(sv.configstrings), 1, f);
++#endif
+ 	CM_WritePortalState (f);
++#ifdef USE_MERGESAVE
++	ge->WriteLevel((char*)f);
++#else
+ 	fclose (f);
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/current/%s.sav", FS_Gamedir(), sv.name);
++	Com_sprintf (name, sizeof(name), "%s/%s.sav", FS_Tmpdir(), sv.name);
+ 	ge->WriteLevel (name);
++#endif
+ }
+ 
+ /*
+@@ -310,19 +416,50 @@
+ 
+ 	Com_DPrintf("SV_ReadLevelFile()\n");
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/current/%s.sv2", FS_Gamedir(), sv.name);
++#ifdef USE_MERGESAVE
++	Com_sprintf (name, sizeof(name), "%s/%s.sav", FS_Tmpdir(), sv.name);
++#else
++	Com_sprintf (name, sizeof(name), "%s/%s.sv2", FS_Tmpdir(), sv.name);
++#endif
++#ifdef	DC
++	{ int fd;
++	fd = _open(name, O_RDONLY);
++	if (fd==-1)
++	{
++		Com_Printf ("Failed to open %s\n", name);
++		return;
++	}
++	printf("SV_ReadLevelFile:%s\n",name);
++	_lseek(fd,sizeof(vmuheader),SEEK_SET);
++	f = fdopen(fd,"rb");
++	}
++#else
+ 	f = fopen(name, "rb");
+ 	if (!f)
+ 	{
+ 		Com_Printf ("Failed to open %s\n", name);
+ 		return;
+ 	}
++#endif
++#if 0 //def USE_FSTRING
++	{int i;
++	for(i=0;i<MAX_CONFIGSTRINGS;i++) {
++		fread_string(sv.configstrings[i],f);
++		printf("%d:%s\n",i,sv.configstrings[i]);
++	}
++	}
++#else
+ 	FS_Read (sv.configstrings, sizeof(sv.configstrings), f);
++#endif
+ 	CM_ReadPortalState (f);
++#ifdef	USE_MERGESAVE
++	ge->ReadLevel ((char*)f);
++#else
+ 	fclose (f);
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/current/%s.sav", FS_Gamedir(), sv.name);
++	Com_sprintf (name, sizeof(name), "%s/%s.sav", FS_Tmpdir(), sv.name);
+ 	ge->ReadLevel (name);
++#endif
+ }
+ 
+ /*
+@@ -342,13 +479,8 @@
+ 
+ 	Com_DPrintf("SV_WriteServerFile(%s)\n", autosave ? "true" : "false");
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/current/server.ssv", FS_Gamedir());
+-	f = fopen (name, "wb");
+-	if (!f)
+-	{
+-		Com_Printf ("Couldn't write %s\n", name);
+-		return;
+-	}
++	Com_sprintf (name, sizeof(name), "%s/serv.ssv", FS_Tmpdir());
++
+ 	// write the comment field
+ 	memset (comment, 0, sizeof(comment));
+ 
+@@ -366,10 +498,37 @@
+ 		Com_sprintf (comment, sizeof(comment), "ENTERING %s", sv.configstrings[CS_NAME]);
+ 	}
+ 
++#ifdef	DC
++	{ int fd;
++	fd = _open (name, O_WRONLY);
++	if (fd==-1)
++	{
++		Com_Printf ("Couldn't write %s\n", name);
++		return;
++	}
++
++	printf("SV_ServerFile:%s\n",name);
++	memcpy(vmuheader.desc_dc,comment,sizeof(comment));
++	_write (fd,&vmuheader,sizeof(vmuheader));
++	f = fdopen(fd,"wb");
++	}
++#else
++	f = fopen (name, "wb");
++	if (!f)
++	{
++		Com_Printf ("Couldn't write %s\n", name);
++		return;
++	}
++
+ 	fwrite (comment, 1, sizeof(comment), f);
++#endif
+ 
+ 	// write the mapcmd
++#ifdef USE_FSTRING
++	fwrite_string(svs.mapcmd,f);
++#else
+ 	fwrite (svs.mapcmd, 1, sizeof(svs.mapcmd), f);
++#endif
+ 
+ 	// write all CVAR_LATCH cvars
+ 	// these will be things like coop, skill, deathmatch, etc
+@@ -383,19 +542,29 @@
+ 			Com_Printf ("Cvar too long: %s = %s\n", var->name, var->string);
+ 			continue;
+ 		}
++#ifdef USE_FSTRING
++		fwrite_string(var->name,f);
++		fwrite_string(var->string,f);
++#else
+ 		memset (name, 0, sizeof(name));
+ 		memset (string, 0, sizeof(string));
+ 		strcpy (name, var->name);
+ 		strcpy (string, var->string);
+ 		fwrite (name, 1, sizeof(name), f);
+ 		fwrite (string, 1, sizeof(string), f);
++#endif
+ 	}
+ 
++#ifdef	USE_MERGESAVE
++	fwrite_string("",f); // end marker
++	ge->WriteGame ((char*)f, autosave);
++#else
+ 	fclose (f);
+ 
+ 	// write game state
+-	Com_sprintf (name, sizeof(name), "%s/save/current/game.ssv", FS_Gamedir());
++	Com_sprintf (name, sizeof(name), "%s/game.ssv", FS_Tmpdir());
+ 	ge->WriteGame (name, autosave);
++#endif
+ }
+ 
+ /*
+@@ -413,7 +582,22 @@
+ 
+ 	Com_DPrintf("SV_ReadServerFile()\n");
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/current/server.ssv", FS_Gamedir());
++	Com_sprintf (name, sizeof(name), "%s/serv.ssv", FS_Tmpdir());
++
++#ifdef	DC
++	{ int fd;
++	fd = _open (name, O_RDONLY);
++	if (fd==-1)
++	{
++		Com_Printf ("Couldn't read %s\n", name);
++		return;
++	}
++	printf("SV_ReadServerFile:%s\n",name);
++	// skip the comment field
++	_lseek(fd,sizeof(vmuheader),SEEK_SET);
++	f = fdopen(fd,"rb");
++	}
++#else
+ 	f = fopen (name, "rb");
+ 	if (!f)
+ 	{
+@@ -422,38 +606,62 @@
+ 	}
+ 	// read the comment field
+ 	FS_Read (comment, sizeof(comment), f);
++#endif
+ 
+ 	// read the mapcmd
++#ifdef USE_FSTRING
++	fread_string(mapcmd,f);
++#else
+ 	FS_Read (mapcmd, sizeof(mapcmd), f);
++#endif
+ 
+ 	// read all CVAR_LATCH cvars
+ 	// these will be things like coop, skill, deathmatch, etc
+ 	while (1)
+ 	{
++#ifdef USE_FSTRING
++		if (!fread_string (name, f))
++			break;
++		fread_string (string, f);
++#else
+ 		if (!fread (name, 1, sizeof(name), f))
+ 			break;
+ 		FS_Read (string, sizeof(string), f);
++#endif
+ 		Com_DPrintf ("Set %s = %s\n", name, string);
+ 		Cvar_ForceSet (name, string);
+ 	}
+ 
++#ifndef	USE_MERGESAVE
+ 	fclose (f);
++#endif
+ 
+ 	// start a new game fresh with new cvars
+ 	SV_InitGame ();
+ 
+ 	strcpy (svs.mapcmd, mapcmd);
+ 
++#ifdef	USE_MERGESAVE
++	ge->ReadGame ((char*)f);
++#else
+ 	// read game state
+-	Com_sprintf (name, sizeof(name), "%s/save/current/game.ssv", FS_Gamedir());
++	Com_sprintf (name, sizeof(name), "%s/game.ssv", FS_Tmpdir());
+ 	ge->ReadGame (name);
++#endif
+ }
+ 
+ 
+ //=========================================================
+ 
+-
+-
++#ifdef	USE_ZLIB
++#undef	fopen
++#undef	fwrite
++#undef	fread
++#undef	fclose
++#undef	FS_Read
++#undef	fgetc
++#undef	fputc
++#endif
+ 
+ /*
+ ==================
+@@ -500,7 +708,7 @@
+ 
+ 	Com_DPrintf("SV_GameMap(%s)\n", Cmd_Argv(1));
+ 
+-	FS_CreatePath (va("%s/save/current/", FS_Gamedir()));
++//	FS_CreatePath (va("%s/save/current/", FS_Gamedir()));
+ 
+ 	// check for clearing the current savegame
+ 	map = Cmd_Argv(1);
+@@ -542,7 +750,7 @@
+ 	if (!dedicated->value)
+ 	{
+ 		SV_WriteServerFile (true);
+-		SV_CopySaveGame ("current", "save0");
++		SV_CopySaveGame ("current", "s0");
+ 	}
+ }
+ 
+@@ -611,8 +819,8 @@
+ 		Com_Printf ("Bad savedir.\n");
+ 	}
+ 
+-	// make sure the server.ssv file exists
+-	Com_sprintf (name, sizeof(name), "%s/save/%s/server.ssv", FS_Gamedir(), Cmd_Argv(1));
++	// make sure the serv.ssv file exists
++	Com_sprintf (name, sizeof(name), "%s/%s/serv.ssv", FS_Savedir(), Cmd_Argv(1));
+ 	f = fopen (name, "rb");
+ 	if (!f)
+ 	{
+diff -u -r quake2-3.21.orig/server/sv_init.c quake2-3.21/server/sv_init.c
+--- quake2-3.21.orig/server/sv_init.c	2001-12-23 01:32:36.000000000 +0900
++++ quake2-3.21/server/sv_init.c	2002-07-22 11:39:16.000000000 +0900
+@@ -126,7 +126,7 @@
+ 	if (Cvar_VariableValue ("deathmatch"))
+ 		return;
+ 
+-	Com_sprintf (name, sizeof(name), "%s/save/current/%s.sav", FS_Gamedir(), sv.name);
++	Com_sprintf (name, sizeof(name), "%s/%s.sav", FS_Tmpdir(), sv.name);
+ 	f = fopen (name, "rb");
+ 	if (!f)
+ 		return;		// no savegame
